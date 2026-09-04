@@ -1,0 +1,14 @@
+.env
+*.venv
+venv/
+__pycache__/
+*.pyc
+.claude/
+
+# 절대 커밋하면 안 되는 비밀키류
+service_account*.json
+.streamlit/secrets.toml
+
+# 로컬 캐시/다운로드본
+data/*.json
+downloads/
