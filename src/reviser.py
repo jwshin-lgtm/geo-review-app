@@ -55,14 +55,17 @@ def _build_user_content(style_guide: dict, paragraphs: list[str]) -> str:
     return json.dumps(payload, ensure_ascii=False, indent=2)
 
 
-def revise_paragraphs(style_guide: dict, paragraphs: list[str]) -> list[dict]:
-    """반환: [{index, revised_text, changed, suggestion}, ...] (paragraphs와 같은 길이/순서 보장)
+def revise_paragraphs(style_guide: dict, paragraphs: list[str]) -> tuple[list[dict], str | None]:
+    """반환: (revisions, error_message)
 
-    개수/순서가 어긋나면 1회 재시도하고, 그래도 실패하면 전체를 changed=False로
-    (원본 그대로) 반환한다 - 구조 훼손 방지가 최우선.
+    revisions는 [{index, revised_text, changed, suggestion}, ...] (paragraphs와 같은 길이/순서 보장).
+    개수/순서가 어긋나거나 호출 자체가 실패하면 1회 재시도하고, 그래도 실패하면
+    전체를 changed=False(원본 그대로)로 반환하되, error_message에 실제 실패 원인을
+    담아 호출측(화면)에서 "그냥 고칠 게 없었다"와 구분해서 보여줄 수 있게 한다.
     """
     user_content = _build_user_content(style_guide, paragraphs)
 
+    last_error: Exception | None = None
     for attempt in range(2):
         try:
             result = gemini_client.generate_json(
@@ -72,17 +75,16 @@ def revise_paragraphs(style_guide: dict, paragraphs: list[str]) -> list[dict]:
             )
             revisions = result["revisions"]
             _validate(revisions, paragraphs)
-            return revisions
-        except (RevisionMismatchError, KeyError, Exception):  # noqa: BLE001
-            if attempt == 0:
-                continue
-            break
+            return revisions, None
+        except Exception as exc:  # noqa: BLE001 - 원인을 보존해 위로 전달
+            last_error = exc
+            continue
 
-    # 실패: 원본 그대로 반환 (자동 수정 실패 - 검토 필요로 UI에서 표시)
-    return [
+    fallback = [
         {"index": i, "revised_text": text, "changed": False, "suggestion": ""}
         for i, text in enumerate(paragraphs)
     ]
+    return fallback, f"자동 수정에 실패해 원본을 그대로 반환했습니다 ({last_error})"
 
 
 def _validate(revisions: list[dict], paragraphs: list[str]) -> None:

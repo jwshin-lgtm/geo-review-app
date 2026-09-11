@@ -160,10 +160,14 @@ else:
                             target_file["id"], target_file["mimeType"]
                         )
                         paragraphs = docx_text.extract_paragraphs(target_bytes)
-                        revisions = reviser.revise_paragraphs(st.session_state.style_guide, paragraphs)
+                        revisions, revise_error = reviser.revise_paragraphs(
+                            st.session_state.style_guide, paragraphs
+                        )
                         result_bytes, changed_any, suggestion_count = highlighter.build_highlighted_docx(
                             target_bytes, revisions
                         )
+                    if revise_error:
+                        st.error(f"'{target_file['name']}' 처리 중 문제가 발생했습니다: {revise_error}")
                     changed_count = sum(1 for r in revisions if r["changed"])
                     results.append(
                         {
@@ -172,6 +176,7 @@ else:
                             "total": len(paragraphs),
                             "changed": changed_count,
                             "suggestions": suggestion_count,
+                            "error": revise_error,
                         }
                     )
                     progress.progress((i + 1) / len(selected_targets))
@@ -187,9 +192,10 @@ if not st.session_state.batch_results:
     st.caption("③에서 자동 수정을 실행하면 여기에 결과가 표시됩니다.")
 else:
     for r in st.session_state.batch_results:
+        status = " ⚠️ 자동 수정 실패 (원본 그대로)" if r.get("error") else ""
         st.write(
             f"- **{r['name']}** : 총 {r['total']}개 문단 중 {r['changed']}개 수정, "
-            f"Word 코멘트(검토의견) {r['suggestions']}건"
+            f"Word 코멘트(검토의견) {r['suggestions']}건{status}"
         )
 
     zip_buffer = io.BytesIO()
