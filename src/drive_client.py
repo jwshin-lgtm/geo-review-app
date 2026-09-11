@@ -24,7 +24,7 @@ def get_drive_service():
 
 
 def list_children(folder_id: str) -> list[dict]:
-    """폴더 안의 파일/폴더 목록. [{id, name, mimeType}, ...]"""
+    """폴더 안의 파일/폴더 목록. [{id, name, mimeType, modifiedTime}, ...]"""
     service = get_drive_service()
     items: list[dict] = []
     page_token = None
@@ -34,7 +34,7 @@ def list_children(folder_id: str) -> list[dict]:
             service.files()
             .list(
                 q=query,
-                fields="nextPageToken, files(id, name, mimeType)",
+                fields="nextPageToken, files(id, name, mimeType, modifiedTime)",
                 pageToken=page_token,
             )
             .execute()

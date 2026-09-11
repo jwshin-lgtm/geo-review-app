@@ -4,11 +4,14 @@ from __future__ import annotations
 import io
 
 from docx.enum.text import WD_COLOR_INDEX
+from docx.shared import RGBColor
 
 from . import diff_utils
 from .docx_text import load_document
 
 RunFormat = dict
+
+SUGGESTION_COLOR = RGBColor(0xC0, 0x50, 0x00)  # 진한 주황 - 하이라이트와 구분되는 검토의견 표시용
 
 
 def get_run_format(run) -> RunFormat:
@@ -121,15 +124,32 @@ def apply_highlighted_revision(doc, para_index: int, revised_text: str) -> bool:
     return True
 
 
-def build_highlighted_docx(original_docx_bytes: bytes, revisions: list[dict]) -> tuple[bytes, bool]:
-    """revisions: reviser.revise_paragraphs()의 결과. 반환: (수정된 docx bytes, 실제 변경 여부)."""
+def append_suggestion_note(paragraph, suggestion: str) -> None:
+    """수정하진 않았지만 애매해서 사람이 봐야 하는 문단에, 눈에 띄는 검토의견을 덧붙인다."""
+    note_run = paragraph.add_run(f" [검토의견: {suggestion}]")
+    note_run.italic = True
+    note_run.font.color.rgb = SUGGESTION_COLOR
+
+
+def build_highlighted_docx(original_docx_bytes: bytes, revisions: list[dict]) -> tuple[bytes, bool, int]:
+    """revisions: reviser.revise_paragraphs()의 결과.
+
+    반환: (수정된 docx bytes, 실제 텍스트 변경 여부, 검토의견 개수)
+    """
     doc = load_document(original_docx_bytes)
     changed_any = False
+    suggestion_count = 0
+
     for rev in revisions:
         if rev.get("changed"):
             changed = apply_highlighted_revision(doc, rev["index"], rev["revised_text"])
             changed_any = changed_any or changed
 
+        suggestion = (rev.get("suggestion") or "").strip()
+        if suggestion:
+            append_suggestion_note(doc.paragraphs[rev["index"]], suggestion)
+            suggestion_count += 1
+
     buffer = io.BytesIO()
     doc.save(buffer)
-    return buffer.getvalue(), changed_any
+    return buffer.getvalue(), changed_any, suggestion_count
