@@ -29,6 +29,28 @@ def align_paragraphs(old_paragraphs: list[str], new_paragraphs: list[str]) -> li
     return examples
 
 
+def match_files_by_name(draft_files: list[dict], final_files: list[dict]) -> list[tuple[dict, dict]]:
+    """초안 파일들과 최종본 파일들을, 파일명 유사도가 가장 높은 것끼리 짝지어준다.
+
+    한 달에 여러 원고(topic)가 섞여 있을 때, 초안/최종본 이름이 완전히 같지는
+    않아도(번호, "재심의" 등 접두/접미어 차이) 핵심 제목 부분이 겹치므로
+    문자열 유사도로 충분히 매칭 가능하다. 탐욕적(greedy) 매칭이라 최적은 아니지만
+    보통 한 달에 파일 수가 적어 실용적으로 문제없다.
+    """
+    remaining_final = list(final_files)
+    pairs: list[tuple[dict, dict]] = []
+    for draft in draft_files:
+        if not remaining_final:
+            break
+        best = max(
+            remaining_final,
+            key=lambda f: SequenceMatcher(None, draft["name"], f["name"]).ratio(),
+        )
+        pairs.append((draft, best))
+        remaining_final.remove(best)
+    return pairs
+
+
 _TOKEN_RE = re.compile(r"\S+|\s+")
 
 

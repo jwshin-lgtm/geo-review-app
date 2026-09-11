@@ -5,7 +5,7 @@
 """
 import streamlit as st
 
-from src import config, drive_client, docx_text, pattern_learning, reviser, highlighter
+from src import config, diff_utils, drive_client, docx_text, pattern_learning, reviser, highlighter
 
 st.set_page_config(page_title="GEO 원고 자동 수정", layout="wide")
 
@@ -67,7 +67,7 @@ if st.session_state.month_folders:
 
     for month_name in selected_months:
         month_folder = next(f for f in st.session_state.month_folders if f["name"] == month_name)
-        with st.expander(f"{month_name} - 초안/최종본 파일 확인", expanded=True):
+        with st.expander(f"{month_name} - 초안/최종본 파일 선택", expanded=True):
             draft_folder = drive_client.find_subfolder_by_candidates(
                 month_folder["id"], config.DRAFT_FOLDER_NAME_CANDIDATES
             )
@@ -75,27 +75,55 @@ if st.session_state.month_folders:
                 month_folder["id"], config.FINAL_FOLDER_NAME_CANDIDATES
             )
 
-            pair_state = st.session_state.learning_pairs.setdefault(month_name, {"draft": None, "final": None})
+            pair_state = st.session_state.learning_pairs.setdefault(
+                month_name, {"draft_files": [], "final_files": []}
+            )
 
             col1, col2 = st.columns(2)
             with col1:
                 if draft_folder:
                     draft_files = drive_client.list_docx_files(draft_folder["id"])
-                    draft_name = st.selectbox(
-                        "초안 파일", [f["name"] for f in draft_files], key=f"draft_{month_name}"
+                    draft_names = st.multiselect(
+                        "초안 파일 (여러 개 선택 가능)",
+                        [f["name"] for f in draft_files],
+                        key=f"draft_{month_name}",
                     )
-                    pair_state["draft_file"] = next((f for f in draft_files if f["name"] == draft_name), None)
+                    pair_state["draft_files"] = [f for f in draft_files if f["name"] in draft_names]
                 else:
                     st.warning("'초안' 폴더를 찾지 못했습니다.")
             with col2:
                 if final_folder:
                     final_files = drive_client.list_docx_files(final_folder["id"])
-                    final_name = st.selectbox(
-                        "최종본 파일", [f["name"] for f in final_files], key=f"final_{month_name}"
+                    final_names = st.multiselect(
+                        "최종본 파일 (여러 개 선택 가능)",
+                        [f["name"] for f in final_files],
+                        key=f"final_{month_name}",
                     )
-                    pair_state["final_file"] = next((f for f in final_files if f["name"] == final_name), None)
+                    pair_state["final_files"] = [f for f in final_files if f["name"] in final_names]
                 else:
                     st.warning("'최종본' 폴더를 찾지 못했습니다.")
+
+st.divider()
+st.subheader("선택된 학습 파일")
+
+_any_selected = False
+for month_name, pair in st.session_state.learning_pairs.items():
+    draft_files = pair.get("draft_files", [])
+    final_files = pair.get("final_files", [])
+    if not draft_files and not final_files:
+        continue
+    _any_selected = True
+    st.markdown(f"**{month_name}**")
+    matched = diff_utils.match_files_by_name(draft_files, final_files)
+    for draft_file, final_file in matched:
+        st.write(f"- (초안) {draft_file['name']}  ↔  (최종) {final_file['name']}")
+    matched_ids = {f["id"] for pair_ in matched for f in pair_}
+    for f in draft_files + final_files:
+        if f["id"] not in matched_ids:
+            st.write(f"- (짝 없음, 학습에서 제외) {f['name']}")
+
+if not _any_selected:
+    st.caption("아직 선택된 파일이 없습니다. 위에서 월을 펼쳐서 초안/최종본 파일을 선택해주세요.")
 
 st.divider()
 st.header("② 스타일 가이드 생성")
@@ -103,13 +131,13 @@ st.header("② 스타일 가이드 생성")
 if st.button("선택한 월들로 학습 시작"):
     pairs_bytes = []
     for month_name, pair in st.session_state.learning_pairs.items():
-        draft_file = pair.get("draft_file")
-        final_file = pair.get("final_file")
-        if not draft_file or not final_file:
-            continue
-        draft_bytes = drive_client.download_docx_bytes(draft_file["id"], draft_file["mimeType"])
-        final_bytes = drive_client.download_docx_bytes(final_file["id"], final_file["mimeType"])
-        pairs_bytes.append((draft_bytes, final_bytes))
+        matched = diff_utils.match_files_by_name(
+            pair.get("draft_files", []), pair.get("final_files", [])
+        )
+        for draft_file, final_file in matched:
+            draft_bytes = drive_client.download_docx_bytes(draft_file["id"], draft_file["mimeType"])
+            final_bytes = drive_client.download_docx_bytes(final_file["id"], final_file["mimeType"])
+            pairs_bytes.append((draft_bytes, final_bytes))
 
     if not pairs_bytes:
         st.warning("학습할 초안/최종본 쌍이 없습니다. ①에서 월을 선택하고 파일을 확인하세요.")
