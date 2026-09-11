@@ -64,10 +64,16 @@ def list_docx_files(folder_id: str) -> list[dict]:
 
 
 def find_subfolder_by_candidates(folder_id: str, name_candidates: list[str]) -> dict | None:
-    subfolders = {f["name"]: f for f in list_subfolders(folder_id)}
+    """폴더명에 후보 문자열이 '포함'되어 있으면 매칭한다.
+
+    실제 폴더명이 "01. 초안", "02. 최종"처럼 번호/공백이 붙어있는 경우가 많아
+    정확히 일치하는 이름만 찾으면 못 찾기 때문에 부분 일치로 판단한다.
+    """
+    subfolders = list_subfolders(folder_id)
     for candidate in name_candidates:
-        if candidate in subfolders:
-            return subfolders[candidate]
+        for folder in subfolders:
+            if candidate.lower() in folder["name"].lower():
+                return folder
     return None
 
 
