@@ -8,6 +8,31 @@ import streamlit as st
 from src import config, drive_client, docx_text, pattern_learning, reviser, highlighter
 
 st.set_page_config(page_title="GEO 원고 자동 수정", layout="wide")
+
+
+def _check_password() -> bool:
+    """APP_PASSWORD 시크릿이 설정되어 있으면, 맞는 비밀번호를 입력해야 앱을 쓸 수 있게 한다."""
+    if not config.APP_PASSWORD:
+        return True  # 비밀번호 미설정 (로컬 개발 등) - 잠금 건너뜀
+
+    if st.session_state.get("authenticated"):
+        return True
+
+    st.title("GEO 원고 자동 수정")
+    st.info("팀 전용 도구입니다. 비밀번호를 입력해주세요.")
+    password = st.text_input("비밀번호", type="password")
+    if st.button("입장"):
+        if password == config.APP_PASSWORD:
+            st.session_state.authenticated = True
+            st.rerun()
+        else:
+            st.error("비밀번호가 올바르지 않습니다.")
+    return False
+
+
+if not _check_password():
+    st.stop()
+
 st.title("GEO 원고 자동 수정")
 
 for key, default in {
