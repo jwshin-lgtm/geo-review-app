@@ -4,6 +4,7 @@ Hugging Face Spaces처럼 "Repository secrets"가 단순 키-값(환경변수)�
 플랫폼을 위해, 서비스 계정 JSON은 GCP_SERVICE_ACCOUNT_JSON 환경변수(JSON 문자열
 전체)로도 넣을 수 있게 되어 있다.
 """
+import base64
 import json
 import os
 
@@ -35,13 +36,19 @@ def _get(key: str, default: str | None = None) -> str | None:
 GEMINI_API_KEY = _get("GEMINI_API_KEY")
 DRIVE_FOLDER_ID = _get("DRIVE_FOLDER_ID", "1Xzb7MLEyM0TFwbuKKr0YiGyhpRCz13bc")
 
-# 서비스 계정 정보 (dict).
-# - Streamlit Cloud: secrets.toml의 [gcp_service_account] 테이블
-# - Hugging Face Spaces 등: GCP_SERVICE_ACCOUNT_JSON 환경변수(JSON 문자열 전체)
-if _has_secret("gcp_service_account"):
+# 서비스 계정 정보 (dict). 아래 중 먼저 발견되는 방식으로 읽는다.
+# - GCP_SERVICE_ACCOUNT_JSON_B64: JSON 파일을 base64로 인코딩한 값 (TOML/환경변수 어디에
+#   넣어도 특수문자로 깨질 일이 없어 가장 안전함 - 권장)
+# - GCP_SERVICE_ACCOUNT_JSON: JSON 문자열 그대로 (Hugging Face 환경변수 등)
+# - [gcp_service_account] TOML 테이블 (Streamlit secrets.toml에서 필드별로 나눠 적은 경우)
+_service_account_json_b64 = _get("GCP_SERVICE_ACCOUNT_JSON_B64")
+_service_account_json = _get("GCP_SERVICE_ACCOUNT_JSON")
+if _service_account_json_b64:
+    GCP_SERVICE_ACCOUNT_INFO = json.loads(base64.b64decode(_service_account_json_b64).decode("utf-8"))
+elif _service_account_json:
+    GCP_SERVICE_ACCOUNT_INFO = json.loads(_service_account_json)
+elif _has_secret("gcp_service_account"):
     GCP_SERVICE_ACCOUNT_INFO = dict(_SECRETS["gcp_service_account"])
-elif os.environ.get("GCP_SERVICE_ACCOUNT_JSON"):
-    GCP_SERVICE_ACCOUNT_INFO = json.loads(os.environ["GCP_SERVICE_ACCOUNT_JSON"])
 else:
     GCP_SERVICE_ACCOUNT_INFO = None
 
