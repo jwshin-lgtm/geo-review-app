@@ -189,7 +189,7 @@ else:
     for r in st.session_state.batch_results:
         st.write(
             f"- **{r['name']}** : 총 {r['total']}개 문단 중 {r['changed']}개 수정, "
-            f"검토의견 {r['suggestions']}건"
+            f"Word 코멘트(검토의견) {r['suggestions']}건"
         )
 
     zip_buffer = io.BytesIO()
