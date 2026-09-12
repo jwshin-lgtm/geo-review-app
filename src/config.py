@@ -69,7 +69,7 @@ STYLE_GUIDE_CACHE_PATH = "data/style_guide_cache.json"
 
 # 심의문구 가이드 탭에서 쓸 "주요 상품" 목록이 들어있는 구글 시트
 PRODUCT_SHEET_ID = _get("PRODUCT_SHEET_ID", "1fZXl7wWqHOdToA3KflB8KlYsWfu3AFIaLNvDiEtCeH8")
-PRODUCT_SHEET_RANGE = _get("PRODUCT_SHEET_RANGE", "A:A")
+PRODUCT_SHEET_RANGE = _get("PRODUCT_SHEET_RANGE", "B:B")
 
 # 심의문구 블록의 시작을 알리는 고정 문구 (KB증권 준법감시인 심사필 안내)
 COMPLIANCE_ANCHOR_PATTERN = r"준법감시인\s*심사필"
