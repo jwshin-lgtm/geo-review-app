@@ -310,5 +310,5 @@ with tab_compliance:
                 )
             else:
                 st.write(f"출처 원고: **{result['file']['name']}**")
-                st.code(result["text"], language=None)
+                st.code(result["text"], language=None, height=500, wrap_lines=True)
                 st.caption("우측 상단 복사 아이콘을 누르면 바로 복사돼요. 문서 안 심의번호는 [숫자]로 표시했으니, 실제 심의 번호로 바꿔서 사용하세요.")
