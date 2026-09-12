@@ -133,7 +133,7 @@ with tab_manuscripts:
                             revisions, revise_error = reviser.revise_paragraphs(
                                 st.session_state.style_guide, paragraphs
                             )
-                            result_bytes, changed_any, suggestion_count = highlighter.build_highlighted_docx(
+                            result_bytes, changed_any, comment_count = highlighter.build_highlighted_docx(
                                 target_bytes, revisions
                             )
                         if revise_error:
@@ -145,7 +145,7 @@ with tab_manuscripts:
                                 "bytes": result_bytes,
                                 "total": len(paragraphs),
                                 "changed": changed_count,
-                                "suggestions": suggestion_count,
+                                "comments": comment_count,
                                 "error": revise_error,
                             }
                         )
@@ -162,8 +162,8 @@ with tab_manuscripts:
         for r in st.session_state.batch_results:
             status = " ⚠️ 자동 수정 실패 (원본 그대로)" if r.get("error") else ""
             st.write(
-                f"- **{r['name']}** : 총 {r['total']}개 문단 중 {r['changed']}개 수정, "
-                f"Word 코멘트(검토의견) {r['suggestions']}건{status}"
+                f"- **{r['name']}** : 총 {r['total']}개 문단 중 {r['changed']}개 수정 "
+                f"(전부 근거 코멘트 포함), Word 코멘트 총 {r['comments']}건{status}"
             )
 
         zip_buffer = io.BytesIO()

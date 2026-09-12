@@ -124,25 +124,36 @@ def apply_highlighted_revision(doc, para_index: int, revised_text: str) -> bool:
 def build_highlighted_docx(original_docx_bytes: bytes, revisions: list[dict]) -> tuple[bytes, bool, int]:
     """revisions: reviser.revise_paragraphs()의 결과.
 
-    확신 있는 수정은 원문에 반영 후 노란 하이라이트, 애매해서 검토가 필요한
-    부분은 원문은 그대로 두고 Word 코멘트(검토 > 메모)로 남긴다.
+    확신 있는 수정은 원문에 반영 후 노란 하이라이트를 입히고, 그 근거(reason)를
+    Word 코멘트로도 반드시 남긴다. 애매해서 확신이 없는 부분은 원문은 그대로 두고
+    검토의견(suggestion)만 Word 코멘트로 남긴다. 이 둘은 항상 세트로 붙어야
+    "누가 실행해도 같은 수준의 결과"가 보장된다 - reviser._validate()가 changed=true인데
+    reason이 빈 경우를 실패로 처리하므로, 여기서는 있는 그대로 반영만 한다.
 
     반환: (수정된 docx bytes, 실제 텍스트 변경 여부, 코멘트 개수)
     """
     doc = load_document(original_docx_bytes)
     changed_any = False
-    suggestion_count = 0
+    comment_count = 0
 
     for rev in revisions:
+        note_text = None
+
         if rev.get("changed"):
             changed = apply_highlighted_revision(doc, rev["index"], rev["revised_text"])
             changed_any = changed_any or changed
+            reason = (rev.get("reason") or "").strip()
+            if reason:
+                note_text = f"[자동 수정] {reason}"
+        else:
+            suggestion = (rev.get("suggestion") or "").strip()
+            if suggestion:
+                note_text = f"[검토의견] {suggestion}"
 
-        suggestion = (rev.get("suggestion") or "").strip()
-        if suggestion:
-            word_comments.add_comment_to_paragraph(doc, doc.paragraphs[rev["index"]], suggestion)
-            suggestion_count += 1
+        if note_text:
+            word_comments.add_comment_to_paragraph(doc, doc.paragraphs[rev["index"]], note_text)
+            comment_count += 1
 
     buffer = io.BytesIO()
     doc.save(buffer)
-    return buffer.getvalue(), changed_any, suggestion_count
+    return buffer.getvalue(), changed_any, comment_count
