@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 
 from . import config, diff_utils, drive_client, gemini_client
 from .diff_utils import EditExample, align_paragraphs
@@ -96,7 +97,7 @@ def save_style_guide_cache(style_guide: dict, path: str = config.STYLE_GUIDE_CAC
 
 def load_learning_state(path: str = LEARNING_STATE_PATH) -> dict:
     if not os.path.exists(path):
-        return {"processed_pairs": [], "examples": []}
+        return {"processed_pairs": [], "examples": [], "learned_months": []}
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
@@ -112,6 +113,32 @@ def _pair_signature(draft_file: dict, final_file: dict) -> str:
     return f"{draft_file['id']}::{final_file['id']}::{final_file.get('modifiedTime', '')}"
 
 
+_MONTH_FOLDER_RE = re.compile(r"(\d{2})(\d{2})$")
+
+
+def format_month_label(folder_name: str) -> str:
+    """'01.2607' 같은 월 폴더명을 '2026년 7월'로 표시한다. 패턴이 안 맞으면 원래 이름 그대로."""
+    match = _MONTH_FOLDER_RE.search(folder_name)
+    if not match:
+        return folder_name
+    yy, mm = match.groups()
+    month = int(mm)
+    if not 1 <= month <= 12:
+        return folder_name
+    return f"{2000 + int(yy)}년 {month}월"
+
+
+def sorted_month_labels(folder_names: list[str]) -> list[str]:
+    def sort_key(name: str) -> tuple[int, int, str]:
+        match = _MONTH_FOLDER_RE.search(name)
+        if not match:
+            return (9999, 99, name)
+        yy, mm = match.groups()
+        return (2000 + int(yy), int(mm), name)
+
+    return [format_month_label(name) for name in sorted(set(folder_names), key=sort_key)]
+
+
 def scan_and_accumulate_learning(root_folder_id: str = config.DRIVE_FOLDER_ID) -> dict:
     """드라이브 전체를 스캔해서, 아직 반영하지 않은 초안/최종본 쌍만 골라 학습에 누적한다.
 
@@ -120,6 +147,7 @@ def scan_and_accumulate_learning(root_folder_id: str = config.DRIVE_FOLDER_ID) -
     """
     state = load_learning_state()
     processed = set(state.get("processed_pairs", []))
+    learned_months = set(state.get("learned_months", []))
     examples: list[EditExample] = [
         EditExample(before=e["before"], after=e["after"]) for e in state.get("examples", [])
     ]
@@ -145,6 +173,7 @@ def scan_and_accumulate_learning(root_folder_id: str = config.DRIVE_FOLDER_ID) -
 
         for draft_file, final_file in matched:
             signature = _pair_signature(draft_file, final_file)
+            learned_months.add(month_folder["name"])  # 이 달은 학습 커버리지가 있음
             if signature in processed:
                 continue
 
@@ -159,16 +188,19 @@ def scan_and_accumulate_learning(root_folder_id: str = config.DRIVE_FOLDER_ID) -
     if new_pair_count > 0:
         style_guide = summarize_style_guide(examples)
         save_style_guide_cache(style_guide)
-        save_learning_state(
-            {
-                "processed_pairs": sorted(processed),
-                "examples": [{"before": e.before, "after": e.after} for e in examples],
-            }
-        )
+
+    save_learning_state(
+        {
+            "processed_pairs": sorted(processed),
+            "examples": [{"before": e.before, "after": e.after} for e in examples],
+            "learned_months": sorted(learned_months),
+        }
+    )
 
     return {
         "new_pairs": new_pair_count,
         "skipped_months": skipped_months,
         "total_examples": len(examples),
         "style_guide": style_guide,
+        "learned_month_labels": sorted_month_labels(list(learned_months)),
     }

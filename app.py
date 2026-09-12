@@ -82,6 +82,16 @@ with tab_manuscripts:
             st.info("새로 반영할 원고가 없습니다. 이미 최신 상태예요.")
         if result["skipped_months"]:
             st.caption(f"초안/최종본 폴더를 찾지 못해 건너뛴 월: {', '.join(result['skipped_months'])}")
+        _learning_state = pattern_learning.load_learning_state()
+
+    _learned_month_labels = pattern_learning.sorted_month_labels(_learning_state.get("learned_months", []))
+    if _learned_month_labels:
+        st.caption(
+            f"학습 완료된 월: {', '.join(_learned_month_labels)} "
+            f"(가장 최근: **{_learned_month_labels[-1]}**)"
+        )
+    else:
+        st.caption("아직 학습된 월이 없습니다.")
 
     st.divider()
     st.header("이번 달 새 초안 일괄 자동 수정")
