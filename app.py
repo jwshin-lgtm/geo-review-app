@@ -13,7 +13,7 @@ import streamlit as st
 
 from src import compliance, config, docx_text, drive_client, highlighter, pattern_learning, reviser, sheets_client
 
-st.set_page_config(page_title="GEO 원고 자동 수정", layout="wide")
+st.set_page_config(page_title="GEO 원고 자동 수정", page_icon="✏️", layout="wide")
 
 
 def _check_password() -> bool:
