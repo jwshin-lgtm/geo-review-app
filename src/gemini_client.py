@@ -1,7 +1,8 @@
-"""Gemini API 래퍼. JSON 구조화 출력을 강제하고, 실패 시 1회 재시도한다."""
+"""Gemini API 래퍼. JSON 구조화 출력을 강제하고, 실패 시 재시도한다."""
 from __future__ import annotations
 
 import json
+import time
 
 from google import genai
 from google.genai import types
@@ -9,6 +10,14 @@ from google.genai import types
 from . import config
 
 _client: genai.Client | None = None
+
+# 일시적 과부하/속도제한 에러 - 몇 초 기다렸다가 다시 시도하면 대부분 해결됨
+_TRANSIENT_MARKERS = ("503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED", "overloaded")
+
+
+def _is_transient_error(exc: Exception) -> bool:
+    message = str(exc)
+    return any(marker in message for marker in _TRANSIENT_MARKERS)
 
 
 def get_client() -> genai.Client:
@@ -24,7 +33,7 @@ def generate_json(
     system_instruction: str,
     user_content: str,
     response_schema: dict | None = None,
-    max_retries: int = 1,
+    max_retries: int = 3,
     max_output_tokens: int = 32768,
 ):
     """Gemini에 JSON 응답을 요청하고 파싱해서 반환한다.
@@ -32,6 +41,8 @@ def generate_json(
     response_schema는 Gemini의 responseSchema 형식(dict)을 그대로 전달한다.
     실패하면 max_retries만큼 재시도하고, 그래도 실패하면 실제 원인이 담긴 예외를 던진다
     (호출측에서 원인을 화면에 보여줄 수 있도록 원인을 뭉개지 않는다).
+    503/429처럼 일시적인 과부하 에러는 재시도 사이에 점점 길게(2초, 4초, 8초...)
+    기다렸다가 다시 시도한다 - 곧바로 재시도하면 여전히 붐비는 상태일 확률이 높기 때문.
     """
     client = get_client()
     generation_config = types.GenerateContentConfig(
@@ -42,7 +53,7 @@ def generate_json(
     )
 
     last_error: Exception | None = None
-    for _ in range(max_retries + 1):
+    for attempt in range(max_retries + 1):
         try:
             response = client.models.generate_content(
                 model=config.GEMINI_MODEL,
@@ -51,6 +62,8 @@ def generate_json(
             )
         except Exception as exc:  # noqa: BLE001 - API 호출 자체의 실패 원인을 그대로 보존
             last_error = exc
+            if _is_transient_error(exc) and attempt < max_retries:
+                time.sleep(2 ** (attempt + 1))
             continue
 
         finish_reason = None
