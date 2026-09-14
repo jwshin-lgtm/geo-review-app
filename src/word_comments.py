@@ -62,10 +62,13 @@ def add_comment_to_paragraph(
 
     comment_p = OxmlElement("w:p")
     comment_r = OxmlElement("w:r")
-    comment_t = OxmlElement("w:t")
-    comment_t.set(qn("xml:space"), "preserve")
-    comment_t.text = text
-    comment_r.append(comment_t)
+    for i, line in enumerate(text.split("\n")):
+        if i > 0:
+            comment_r.append(OxmlElement("w:br"))
+        line_t = OxmlElement("w:t")
+        line_t.set(qn("xml:space"), "preserve")
+        line_t.text = line
+        comment_r.append(line_t)
     comment_p.append(comment_r)
     comment_el.append(comment_p)
     comments_element.append(comment_el)

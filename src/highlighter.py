@@ -140,11 +140,12 @@ def build_highlighted_docx(original_docx_bytes: bytes, revisions: list[dict]) ->
         note_text = None
 
         if rev.get("changed"):
+            original_text = doc.paragraphs[rev["index"]].text  # 하이라이트 적용 전에 원문을 미리 보존
             changed = apply_highlighted_revision(doc, rev["index"], rev["revised_text"])
             changed_any = changed_any or changed
             reason = (rev.get("reason") or "").strip()
             if reason:
-                note_text = f"[자동 수정] {reason}"
+                note_text = f"[자동 수정]\n원문: {original_text}\n사유: {reason}"
         else:
             suggestion = (rev.get("suggestion") or "").strip()
             if suggestion:
