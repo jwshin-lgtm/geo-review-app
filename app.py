@@ -65,7 +65,7 @@ with tab_manuscripts:
     _learning_state = pattern_learning.load_learning_state()
     _rule_count = len((st.session_state.style_guide or {}).get("rules", []))
     st.write(
-        f"지금까지 익힌 원고 쌍은 **{len(_learning_state.get('processed_pairs', []))}건**, "
+        f"지금까지 익힌 최종 원고는 **{len(_learning_state.get('processed_pairs', []))}건**, "
         f"정리된 규칙은 **{_rule_count}개**예요."
     )
 
