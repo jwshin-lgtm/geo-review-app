@@ -82,11 +82,43 @@ def summarize_style_guide(examples: list[EditExample]) -> dict:
     )
 
 
-def load_cached_style_guide(path: str = config.STYLE_GUIDE_CACHE_PATH) -> dict | None:
+# 팀에서 항상 지키기로 한 고정 규칙. 배포할 때마다 자동으로 스타일 가이드에 포함된다
+# (사용자가 화면에서 지우면 그 세션 동안은 빠지지만, 다음 배포/재시작 시 다시 채워진다).
+SEED_RULES = [
+    {
+        "category": "톤앤매너",
+        "rule": '"~입니다"체 대신 "~요"체로 문장을 끝맺는다 (예: "적용됩니다" -> "적용돼요").',
+        "example_before": "세액공제가 적용됩니다.",
+        "example_after": "세액공제가 적용돼요.",
+    },
+    {
+        "category": "법적고지·컴플라이언스",
+        "rule": (
+            "법적 근거만 인용하는 경우 콘텐츠 출처 표기 기준상 \"(출처: ...)\" 대신 "
+            '"(근거: ...)"로 표기한다.'
+        ),
+        "example_before": "(출처: 근로자퇴직급여보장법 시행령 제18조·소득세법 제129조)",
+        "example_after": "(근거: 근로자퇴직급여보장법 시행령 제18조·소득세법 제129조)",
+    },
+]
+
+
+def ensure_seed_rules(style_guide: dict) -> dict:
+    """style_guide에 SEED_RULES가 빠져있으면 채워 넣는다 (규칙 문구로 중복 판단)."""
+    rules = list(style_guide.get("rules", []))
+    existing_rule_texts = {r.get("rule", "").strip() for r in rules}
+    for seed in SEED_RULES:
+        if seed["rule"] not in existing_rule_texts:
+            rules.append(dict(seed))
+    return {"rules": rules}
+
+
+def load_cached_style_guide(path: str = config.STYLE_GUIDE_CACHE_PATH) -> dict:
     if not os.path.exists(path):
-        return None
+        return ensure_seed_rules({"rules": []})
     with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+        style_guide = json.load(f)
+    return ensure_seed_rules(style_guide)
 
 
 def save_style_guide_cache(style_guide: dict, path: str = config.STYLE_GUIDE_CACHE_PATH) -> None:
@@ -184,9 +216,9 @@ def scan_and_accumulate_learning(root_folder_id: str = config.DRIVE_FOLDER_ID) -
             processed.add(signature)
             new_pair_count += 1
 
-    style_guide = load_cached_style_guide() or {"rules": []}
+    style_guide = load_cached_style_guide()
     if new_pair_count > 0:
-        style_guide = summarize_style_guide(examples)
+        style_guide = ensure_seed_rules(summarize_style_guide(examples))
         save_style_guide_cache(style_guide)
 
     save_learning_state(
