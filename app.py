@@ -257,7 +257,7 @@ with tab_style_guide:
                 grouped[rule.get("category", "기타")].append(rule)
 
             pending_by_category = {}
-            for category, items in grouped.items():
+            for i, (category, items) in enumerate(grouped.items()):
                 rows = [
                     {
                         "rule": r.get("rule", ""),
@@ -266,7 +266,8 @@ with tab_style_guide:
                     }
                     for r in items
                 ]
-                with st.expander(f"{category} ({len(rows)}개)", expanded=False):
+                st.markdown(theme.badge_html(category, i), unsafe_allow_html=True)
+                with st.expander(f"{len(rows)}개 규칙 보기", expanded=False):
                     edited_rows = st.data_editor(
                         rows,
                         num_rows="dynamic",
