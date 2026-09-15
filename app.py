@@ -11,9 +11,10 @@ from collections import defaultdict
 
 import streamlit as st
 
-from src import compliance, config, docx_text, drive_client, highlighter, pattern_learning, reviser, sheets_client
+from src import compliance, config, docx_text, drive_client, highlighter, pattern_learning, reviser, sheets_client, theme
 
 st.set_page_config(page_title="GEO 원고 자동 수정", page_icon="✏️", layout="wide")
+theme.inject()
 
 
 def _check_password() -> bool:
@@ -59,143 +60,148 @@ tab_manuscripts, tab_style_guide, tab_compliance = st.tabs(["원고 리스트", 
 # 탭 1: 원고 리스트 (학습 현황 + 일괄 자동 수정 + 다운로드)
 # ══════════════════════════════════════════════════════════════════════
 with tab_manuscripts:
-    st.header("원고 학습 현황")
-    st.caption("드라이브를 쭉 살펴보고, 아직 안 배운 수정 이력만 콕 집어서 학습해요.")
+    with st.container(border=True):
+        st.header("원고 학습 현황")
+        st.caption("드라이브를 쭉 살펴보고, 아직 안 배운 수정 이력만 콕 집어서 학습해요.")
 
-    _learning_state = pattern_learning.load_learning_state()
-    _rule_count = len((st.session_state.style_guide or {}).get("rules", []))
-    st.write(
-        f"지금까지 익힌 최종 원고는 **{len(_learning_state.get('processed_pairs', []))}건**, "
-        f"정리된 규칙은 **{_rule_count}개**예요."
-    )
-
-    if st.button("새 원고 있는지 확인하기", type="primary"):
-        with st.spinner("드라이브를 살펴보는 중이에요. 원고가 많으면 조금 걸릴 수 있어요..."):
-            result = pattern_learning.scan_and_accumulate_learning()
-        st.session_state.style_guide = result["style_guide"]
-        if result["new_pairs"] > 0:
-            st.success(
-                f"새 원고 {result['new_pairs']}건, 방금 배웠어요. "
-                f"(누적 예시 {result['total_examples']}건, 규칙 {len(result['style_guide'].get('rules', []))}개)"
-            )
-        else:
-            st.info("새로 배울 원고가 없어요. 이미 최신이에요.")
-        if result["skipped_months"]:
-            st.caption(f"초안·최종본 폴더를 못 찾아서 건너뛴 달: {', '.join(result['skipped_months'])}")
         _learning_state = pattern_learning.load_learning_state()
-
-    _learned_month_labels = pattern_learning.sorted_month_labels(_learning_state.get("learned_months", []))
-    if _learned_month_labels:
-        st.caption(
-            f"여기까지 배웠어요: {', '.join(_learned_month_labels)} "
-            f"(가장 최근은 **{_learned_month_labels[-1]}**)"
-        )
-    else:
-        st.caption("아직 배운 달이 없어요.")
-
-    st.divider()
-    st.header("새 초안 한 번에 수정하기")
-
-    rules = (st.session_state.style_guide or {}).get("rules", [])
-
-    if st.button("월별 폴더 불러오기"):
-        try:
-            st.session_state.month_folders = drive_client.list_subfolders(config.DRIVE_FOLDER_ID)
-        except Exception as exc:  # noqa: BLE001
-            st.error(f"드라이브 폴더를 못 불러왔어요: {exc}")
-            st.session_state.month_folders = []
-
-    if not st.session_state.month_folders:
-        st.info("위 버튼을 눌러서 폴더부터 불러와주세요.")
-    else:
-        month_names = [f["name"] for f in st.session_state.month_folders]
-        target_month = st.selectbox("어느 달 초안을 고칠까요?", month_names, key="target_month")
-        target_month_folder = next(f for f in st.session_state.month_folders if f["name"] == target_month)
-        target_draft_folder = drive_client.find_subfolder_by_candidates(
-            target_month_folder["id"], config.DRAFT_FOLDER_NAME_CANDIDATES
+        _rule_count = len((st.session_state.style_guide or {}).get("rules", []))
+        st.write(
+            f"지금까지 익힌 최종 원고는 **{len(_learning_state.get('processed_pairs', []))}건**, "
+            f"정리된 규칙은 **{_rule_count}개**예요."
         )
 
-        if not target_draft_folder:
-            st.warning("'초안' 폴더를 못 찾았어요.")
+        if st.button("새 원고 있는지 확인하기", type="primary"):
+            with st.spinner("드라이브를 살펴보는 중이에요. 원고가 많으면 조금 걸릴 수 있어요..."):
+                result = pattern_learning.scan_and_accumulate_learning()
+            st.session_state.style_guide = result["style_guide"]
+            if result["new_pairs"] > 0:
+                st.success(
+                    f"새 원고 {result['new_pairs']}건, 방금 배웠어요. "
+                    f"(누적 예시 {result['total_examples']}건, 규칙 {len(result['style_guide'].get('rules', []))}개)"
+                )
+            else:
+                st.info("새로 배울 원고가 없어요. 이미 최신이에요.")
+            if result["skipped_months"]:
+                st.caption(f"초안·최종본 폴더를 못 찾아서 건너뛴 달: {', '.join(result['skipped_months'])}")
+            _learning_state = pattern_learning.load_learning_state()
+
+        _learned_month_labels = pattern_learning.sorted_month_labels(_learning_state.get("learned_months", []))
+        if _learned_month_labels:
+            st.caption(
+                f"여기까지 배웠어요: {', '.join(_learned_month_labels)} "
+                f"(가장 최근은 **{_learned_month_labels[-1]}**)"
+            )
         else:
-            target_files = drive_client.list_docx_files(target_draft_folder["id"])
-            target_names = st.multiselect(
-                "고칠 초안을 골라주세요 (여러 개도 OK)",
-                [f["name"] for f in target_files],
-                key="target_files",
-            )
-            selected_targets = [f for f in target_files if f["name"] in target_names]
+            st.caption("아직 배운 달이 없어요.")
 
-            if st.button("선택한 초안 한 번에 수정하기", type="primary"):
-                if not rules:
-                    st.warning("먼저 스타일 가이드부터 준비해주세요 (학습을 반영하거나, 스타일 가이드 탭에서 직접 추가할 수 있어요).")
-                elif not selected_targets:
-                    st.warning("고칠 파일을 하나 이상 골라주세요.")
-                else:
-                    results = []
-                    progress = st.progress(0.0)
-                    for i, target_file in enumerate(selected_targets):
-                        with st.spinner(f"'{target_file['name']}' 읽고 고치는 중이에요..."):
-                            target_bytes = drive_client.download_docx_bytes(
-                                target_file["id"], target_file["mimeType"]
-                            )
-                            paragraphs = docx_text.extract_paragraphs(target_bytes)
-                            revisions, revise_error = reviser.revise_paragraphs(
-                                st.session_state.style_guide, paragraphs
-                            )
-                            result_bytes, changed_any, comment_count = highlighter.build_highlighted_docx(
-                                target_bytes, revisions
-                            )
-                        if revise_error:
-                            st.error(f"'{target_file['name']}'을 고치다가 문제가 생겼어요: {revise_error}")
-                        changed_count = sum(1 for r in revisions if r["changed"])
-                        results.append(
-                            {
-                                "name": target_file["name"],
-                                "bytes": result_bytes,
-                                "total": len(paragraphs),
-                                "changed": changed_count,
-                                "comments": comment_count,
-                                "error": revise_error,
-                            }
-                        )
-                        progress.progress((i + 1) / len(selected_targets))
-                    st.session_state.batch_results = results
-                    st.success(f"{len(results)}건, 다 고쳤어요.")
+    st.write("")
 
-    st.divider()
-    st.header("다운로드")
+    with st.container(border=True):
+        st.header("새 초안 한 번에 수정하기")
 
-    if not st.session_state.batch_results:
-        st.caption("위에서 자동 수정을 실행하면 결과가 여기 쌓여요.")
-    else:
-        for r in st.session_state.batch_results:
-            status = " ⚠️ 자동 수정에 실패해서 원본 그대로예요" if r.get("error") else ""
-            st.write(
-                f"- **{r['name']}** : 총 {r['total']}개 문단 중 {r['changed']}개 고쳤어요 "
-                f"(고친 이유는 전부 코멘트로 남겼어요), Word 코멘트 총 {r['comments']}건{status}"
+        rules = (st.session_state.style_guide or {}).get("rules", [])
+
+        if st.button("월별 폴더 불러오기"):
+            try:
+                st.session_state.month_folders = drive_client.list_subfolders(config.DRIVE_FOLDER_ID)
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"드라이브 폴더를 못 불러왔어요: {exc}")
+                st.session_state.month_folders = []
+
+        if not st.session_state.month_folders:
+            st.info("위 버튼을 눌러서 폴더부터 불러와주세요.")
+        else:
+            month_names = [f["name"] for f in st.session_state.month_folders]
+            target_month = st.selectbox("어느 달 초안을 고칠까요?", month_names, key="target_month")
+            target_month_folder = next(f for f in st.session_state.month_folders if f["name"] == target_month)
+            target_draft_folder = drive_client.find_subfolder_by_candidates(
+                target_month_folder["id"], config.DRAFT_FOLDER_NAME_CANDIDATES
             )
 
-        zip_buffer = io.BytesIO()
-        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+            if not target_draft_folder:
+                st.warning("'초안' 폴더를 못 찾았어요.")
+            else:
+                target_files = drive_client.list_docx_files(target_draft_folder["id"])
+                target_names = st.multiselect(
+                    "고칠 초안을 골라주세요 (여러 개도 OK)",
+                    [f["name"] for f in target_files],
+                    key="target_files",
+                )
+                selected_targets = [f for f in target_files if f["name"] in target_names]
+
+                if st.button("선택한 초안 한 번에 수정하기", type="primary"):
+                    if not rules:
+                        st.warning("먼저 스타일 가이드부터 준비해주세요 (학습을 반영하거나, 스타일 가이드 탭에서 직접 추가할 수 있어요).")
+                    elif not selected_targets:
+                        st.warning("고칠 파일을 하나 이상 골라주세요.")
+                    else:
+                        results = []
+                        progress = st.progress(0.0)
+                        for i, target_file in enumerate(selected_targets):
+                            with st.spinner(f"'{target_file['name']}' 읽고 고치는 중이에요..."):
+                                target_bytes = drive_client.download_docx_bytes(
+                                    target_file["id"], target_file["mimeType"]
+                                )
+                                paragraphs = docx_text.extract_paragraphs(target_bytes)
+                                revisions, revise_error = reviser.revise_paragraphs(
+                                    st.session_state.style_guide, paragraphs
+                                )
+                                result_bytes, changed_any, comment_count = highlighter.build_highlighted_docx(
+                                    target_bytes, revisions
+                                )
+                            if revise_error:
+                                st.error(f"'{target_file['name']}'을 고치다가 문제가 생겼어요: {revise_error}")
+                            changed_count = sum(1 for r in revisions if r["changed"])
+                            results.append(
+                                {
+                                    "name": target_file["name"],
+                                    "bytes": result_bytes,
+                                    "total": len(paragraphs),
+                                    "changed": changed_count,
+                                    "comments": comment_count,
+                                    "error": revise_error,
+                                }
+                            )
+                            progress.progress((i + 1) / len(selected_targets))
+                        st.session_state.batch_results = results
+                        st.success(f"{len(results)}건, 다 고쳤어요.")
+
+    st.write("")
+
+    with st.container(border=True):
+        st.header("다운로드")
+
+        if not st.session_state.batch_results:
+            st.caption("위에서 자동 수정을 실행하면 결과가 여기 쌓여요.")
+        else:
             for r in st.session_state.batch_results:
-                zf.writestr(f"[수정본] {r['name']}", r["bytes"])
+                status = " ⚠️ 자동 수정에 실패해서 원본 그대로예요" if r.get("error") else ""
+                st.write(
+                    f"- **{r['name']}** : 총 {r['total']}개 문단 중 {r['changed']}개 고쳤어요 "
+                    f"(고친 이유는 전부 코멘트로 남겼어요), Word 코멘트 총 {r['comments']}건{status}"
+                )
 
-        st.download_button(
-            "수정본 전체 한 번에 받기 (zip)",
-            data=zip_buffer.getvalue(),
-            file_name="수정본_모음.zip",
-            mime="application/zip",
-        )
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+                for r in st.session_state.batch_results:
+                    zf.writestr(f"[수정본] {r['name']}", r["bytes"])
 
-        if len(st.session_state.batch_results) == 1:
-            only = st.session_state.batch_results[0]
             st.download_button(
-                "수정본 받기 (.docx)",
-                data=only["bytes"],
-                file_name=f"[수정본] {only['name']}",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "수정본 전체 한 번에 받기 (zip)",
+                data=zip_buffer.getvalue(),
+                file_name="수정본_모음.zip",
+                mime="application/zip",
             )
+
+            if len(st.session_state.batch_results) == 1:
+                only = st.session_state.batch_results[0]
+                st.download_button(
+                    "수정본 받기 (.docx)",
+                    data=only["bytes"],
+                    file_name=f"[수정본] {only['name']}",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                )
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -204,121 +210,125 @@ with tab_manuscripts:
 with tab_style_guide:
     rules = (st.session_state.style_guide or {}).get("rules", [])
 
-    st.header("규칙 직접 추가하기")
-    st.caption("자동으로 배운 것 말고도, 팀이 이미 알고 있는 규칙을 메모로 바로 추가할 수 있어요.")
-    existing_categories = sorted({r.get("category", "기타") for r in rules}) or ["기타"]
-    with st.form("add_rule_form", clear_on_submit=True):
-        new_rule_text = st.text_area("어떤 규칙을 추가할까요?", placeholder="예: 상품명 뒤에는 항상 '(사후관리형)'을 붙여요")
-        col_a, col_b = st.columns([2, 1])
-        with col_a:
-            category_choice = st.selectbox("카테고리", existing_categories + ["+ 새 카테고리"])
-        with col_b:
-            new_category_name = st.text_input("새 카테고리 이름 (선택했을 때만)")
-        submitted = st.form_submit_button("규칙 추가하기")
-        if submitted:
-            if not new_rule_text.strip():
-                st.warning("규칙 내용을 먼저 적어주세요.")
-            else:
-                final_category = (
-                    new_category_name.strip() if category_choice == "+ 새 카테고리" and new_category_name.strip()
-                    else category_choice
-                )
-                rules.append(
+    with st.container(border=True):
+        st.header("규칙 직접 추가하기")
+        st.caption("자동으로 배운 것 말고도, 팀이 이미 알고 있는 규칙을 메모로 바로 추가할 수 있어요.")
+        existing_categories = sorted({r.get("category", "기타") for r in rules}) or ["기타"]
+        with st.form("add_rule_form", clear_on_submit=True):
+            new_rule_text = st.text_area("어떤 규칙을 추가할까요?", placeholder="예: 상품명 뒤에는 항상 '(사후관리형)'을 붙여요")
+            col_a, col_b = st.columns([2, 1])
+            with col_a:
+                category_choice = st.selectbox("카테고리", existing_categories + ["+ 새 카테고리"])
+            with col_b:
+                new_category_name = st.text_input("새 카테고리 이름 (선택했을 때만)")
+            submitted = st.form_submit_button("규칙 추가하기")
+            if submitted:
+                if not new_rule_text.strip():
+                    st.warning("규칙 내용을 먼저 적어주세요.")
+                else:
+                    final_category = (
+                        new_category_name.strip() if category_choice == "+ 새 카테고리" and new_category_name.strip()
+                        else category_choice
+                    )
+                    rules.append(
+                        {
+                            "category": final_category or "기타",
+                            "rule": new_rule_text.strip(),
+                            "example_before": "",
+                            "example_after": "(직접 추가한 규칙)",
+                        }
+                    )
+                    st.session_state.style_guide = {"rules": rules}
+                    pattern_learning.save_style_guide_cache(st.session_state.style_guide)
+                    st.success("규칙을 추가했어요.")
+                    st.rerun()
+
+    st.write("")
+
+    with st.container(border=True):
+        st.header("전체 규칙 보기")
+
+        if not rules:
+            st.info("아직 규칙이 없어요. '원고 리스트' 탭에서 학습을 반영하거나, 위에서 직접 추가해보세요.")
+        else:
+            st.caption("카테고리별로 접어뒀어요. 펼쳐서 확인하고 고친 다음, 아래 저장 버튼을 눌러주세요.")
+            grouped = defaultdict(list)
+            for rule in rules:
+                grouped[rule.get("category", "기타")].append(rule)
+
+            pending_by_category = {}
+            for category, items in grouped.items():
+                rows = [
                     {
-                        "category": final_category or "기타",
-                        "rule": new_rule_text.strip(),
-                        "example_before": "",
-                        "example_after": "(직접 추가한 규칙)",
+                        "rule": r.get("rule", ""),
+                        "example_before": r.get("example_before", ""),
+                        "example_after": r.get("example_after", ""),
                     }
-                )
-                st.session_state.style_guide = {"rules": rules}
+                    for r in items
+                ]
+                with st.expander(f"{category} ({len(rows)}개)", expanded=False):
+                    edited_rows = st.data_editor(
+                        rows,
+                        num_rows="dynamic",
+                        use_container_width=True,
+                        key=f"style_cat_{category}",
+                    )
+                    pending_by_category[category] = edited_rows
+
+            if st.button("저장하기"):
+                new_rules = []
+                for category, edited_rows in pending_by_category.items():
+                    for row in edited_rows:
+                        if (row.get("rule") or "").strip():
+                            new_rules.append({"category": category, **row})
+                st.session_state.style_guide = {"rules": new_rules}
                 pattern_learning.save_style_guide_cache(st.session_state.style_guide)
-                st.success("규칙을 추가했어요.")
-                st.rerun()
-
-    st.divider()
-    st.header("전체 규칙 보기")
-
-    if not rules:
-        st.info("아직 규칙이 없어요. '원고 리스트' 탭에서 학습을 반영하거나, 위에서 직접 추가해보세요.")
-    else:
-        st.caption("카테고리별로 접어뒀어요. 펼쳐서 확인하고 고친 다음, 아래 저장 버튼을 눌러주세요.")
-        grouped = defaultdict(list)
-        for rule in rules:
-            grouped[rule.get("category", "기타")].append(rule)
-
-        pending_by_category = {}
-        for category, items in grouped.items():
-            rows = [
-                {
-                    "rule": r.get("rule", ""),
-                    "example_before": r.get("example_before", ""),
-                    "example_after": r.get("example_after", ""),
-                }
-                for r in items
-            ]
-            with st.expander(f"{category} ({len(rows)}개)", expanded=False):
-                edited_rows = st.data_editor(
-                    rows,
-                    num_rows="dynamic",
-                    use_container_width=True,
-                    key=f"style_cat_{category}",
-                )
-                pending_by_category[category] = edited_rows
-
-        if st.button("저장하기"):
-            new_rules = []
-            for category, edited_rows in pending_by_category.items():
-                for row in edited_rows:
-                    if (row.get("rule") or "").strip():
-                        new_rules.append({"category": category, **row})
-            st.session_state.style_guide = {"rules": new_rules}
-            pattern_learning.save_style_guide_cache(st.session_state.style_guide)
-            st.success("저장했어요.")
+                st.success("저장했어요.")
 
 
 # ══════════════════════════════════════════════════════════════════════
 # 탭 3: 심의문구 가이드
 # ══════════════════════════════════════════════════════════════════════
 with tab_compliance:
-    st.header("심의문구 가이드")
-    st.caption("상품을 고르면, 가장 최근 최종본에서 심의문구만 쏙 뽑아 보여드려요.")
+    with st.container(border=True):
+        st.header("심의문구 가이드")
+        st.caption("상품을 고르면, 가장 최근 최종본에서 심의문구만 쏙 뽑아 보여드려요.")
 
-    if st.button("상품 목록 불러오기"):
-        try:
-            st.session_state.product_list = sheets_client.read_product_list()
-        except Exception as exc:  # noqa: BLE001
-            st.error(f"상품 목록을 못 불러왔어요: {exc}")
-            st.session_state.product_list = []
+        if st.button("상품 목록 불러오기"):
+            try:
+                st.session_state.product_list = sheets_client.read_product_list()
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"상품 목록을 못 불러왔어요: {exc}")
+                st.session_state.product_list = []
 
-    if not st.session_state.product_list:
-        st.info("위 버튼을 눌러서 상품 목록부터 불러와주세요.")
-    else:
-        product = st.selectbox("어떤 상품인가요?", st.session_state.product_list, key="compliance_product")
+        if not st.session_state.product_list:
+            st.info("위 버튼을 눌러서 상품 목록부터 불러와주세요.")
+        else:
+            product = st.selectbox("어떤 상품인가요?", st.session_state.product_list, key="compliance_product")
 
-        if st.button("심의문구 찾기", type="primary"):
-            with st.spinner(f"'{product}' 관련 최신 원고를 찾는 중이에요..."):
-                try:
-                    matched_file, compliance_text = compliance.get_compliance_text_for_product(product)
-                except Exception as exc:  # noqa: BLE001
-                    st.error(f"찾는 중에 문제가 생겼어요: {exc}")
-                    matched_file, compliance_text = None, None
-            st.session_state.compliance_result = {
-                "product": product,
-                "file": matched_file,
-                "text": compliance_text,
-            }
+            if st.button("심의문구 찾기", type="primary"):
+                with st.spinner(f"'{product}' 관련 최신 원고를 찾는 중이에요..."):
+                    try:
+                        matched_file, compliance_text = compliance.get_compliance_text_for_product(product)
+                    except Exception as exc:  # noqa: BLE001
+                        st.error(f"찾는 중에 문제가 생겼어요: {exc}")
+                        matched_file, compliance_text = None, None
+                st.session_state.compliance_result = {
+                    "product": product,
+                    "file": matched_file,
+                    "text": compliance_text,
+                }
 
-        result = st.session_state.compliance_result
-        if result and result["product"] == product:
-            if not result["file"]:
-                st.warning("이 상품과 관련된 최종본을 못 찾았어요.")
-            elif not result["text"]:
-                st.warning(
-                    f"'{result['file']['name']}' 파일은 찾았는데, 그 안에서 심의문구는 못 찾았어요 "
-                    "('준법감시인 심사필'로 시작하는 문단이 없어요)."
-                )
-            else:
-                st.write(f"여기서 가져왔어요: **{result['file']['name']}**")
-                st.code(result["text"], language=None, height=500, wrap_lines=True)
-                st.caption("우측 상단 복사 아이콘 누르면 바로 복사돼요. 심의번호는 [숫자]로 표시해뒀으니, 실제 번호로 바꿔서 써주세요.")
+            result = st.session_state.compliance_result
+            if result and result["product"] == product:
+                if not result["file"]:
+                    st.warning("이 상품과 관련된 최종본을 못 찾았어요.")
+                elif not result["text"]:
+                    st.warning(
+                        f"'{result['file']['name']}' 파일은 찾았는데, 그 안에서 심의문구는 못 찾았어요 "
+                        "('준법감시인 심사필'로 시작하는 문단이 없어요)."
+                    )
+                else:
+                    st.write(f"여기서 가져왔어요: **{result['file']['name']}**")
+                    st.code(result["text"], language=None, height=500, wrap_lines=True)
+                    st.caption("우측 상단 복사 아이콘 누르면 바로 복사돼요. 심의번호는 [숫자]로 표시해뒀으니, 실제 번호로 바꿔서 써주세요.")
