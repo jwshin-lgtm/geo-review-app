@@ -26,6 +26,8 @@ REVISION_SCHEMA = {
     "required": ["revisions"],
 }
 
+CITATION_MARKERS = ["출처", "증빙"]
+
 SYSTEM_INSTRUCTION = """당신은 GEO 블로그 원고 편집 보조입니다.
 아래 '수정 스타일 가이드'는 과거 담당자/광고주가 반복해온 실제 수정 원칙입니다.
 이번 초안에 이 가이드를 적극적으로, 하지만 정확하게 적용하세요.
@@ -44,7 +46,10 @@ SYSTEM_INSTRUCTION = """당신은 GEO 블로그 원고 편집 보조입니다.
    반드시 suggestion에 검토 의견을 남긴다.
 6. 고칠 것도, 의견을 남길 것도 없는 문단만 reason과 suggestion을 모두 빈 문자열("")로 둔다.
 7. 출력은 입력과 반드시 같은 개수, 같은 순서의 항목을 포함해야 한다.
-   changed가 false이면 revised_text는 원문(paragraphs 배열의 해당 text)과 완전히 동일해야 한다."""
+   changed가 false이면 revised_text는 원문(paragraphs 배열의 해당 text)과 완전히 동일해야 한다.
+8. "출처", "증빙" 등이 포함된 인용/출처 표기(예: "(출처: 소득세법 제59조의3 제4항 ...)")는
+   절대 삭제하거나 축약하지 않는다. 문장을 다듬더라도 출처·법령·증빙 표기는 원문 그대로
+   전부 남긴다 - 이 부분이 사라지면 수정 전체가 무효로 처리된다."""
 
 
 class RevisionMismatchError(Exception):
@@ -105,3 +110,9 @@ def _validate(revisions: list[dict], paragraphs: list[str]) -> None:
             raise RevisionMismatchError("changed=false인데 텍스트가 원문과 다릅니다.")
         if r["changed"] and not (r.get("reason") or "").strip():
             raise RevisionMismatchError("changed=true인데 reason(수정 근거)이 비어있습니다.")
+        if r["changed"]:
+            for marker in CITATION_MARKERS:
+                if marker in original and marker not in r["revised_text"]:
+                    raise RevisionMismatchError(
+                        f"원문에 있던 '{marker}' 표기가 수정본에서 사라졌습니다 (출처/증빙 삭제 금지)."
+                    )
