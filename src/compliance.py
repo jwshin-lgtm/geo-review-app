@@ -14,7 +14,8 @@ _NUMBER_IN_ANCHOR_RE = re.compile(r"(제\s*)[0-9][0-9\-]*(\s*호)")
 def extract_compliance_text(paragraphs: list[str]) -> str | None:
     """'준법감시인 심사필'로 시작하는 문단부터 문서 끝까지를 심의문구로 간주해 추출한다.
 
-    심의번호(숫자)는 매번 바뀌므로 [숫자]로 치환해서 반환한다.
+    심의번호(숫자)는 매번 바뀌므로 [숫자]로 치환해서 반환하고, 첫 줄(심사필 안내 문구)은
+    대괄호로 감싸서 표기한다 (예: "[KB증권 준법감시인 심사필 제[숫자]호(2026.00.00~2027.00.00)]").
     """
     start_idx = None
     for i, text in enumerate(paragraphs):
@@ -25,6 +26,8 @@ def extract_compliance_text(paragraphs: list[str]) -> str | None:
         return None
 
     block = [p for p in paragraphs[start_idx:] if p.strip()]
+    if block:
+        block[0] = f"[{block[0]}]"
     joined = "\n".join(block)
     return _NUMBER_IN_ANCHOR_RE.sub(r"\1[숫자]\2", joined)
 
