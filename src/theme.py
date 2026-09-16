@@ -151,10 +151,18 @@ CUSTOM_CSS = """
 [data-testid="stExpander"] summary {
     padding: 0.9rem 1rem;
 }
-[data-testid="stExpander"] summary p {
-    font-size: 1.05rem !important;
+[data-testid="stExpander"] summary,
+[data-testid="stExpander"] summary * {
+    font-size: 1.15rem !important;
     font-weight: 700 !important;
-    color: var(--gr-text);
+    letter-spacing: -0.01em;
+}
+[data-testid="stExpander"] summary p,
+[data-testid="stExpander"] summary span {
+    color: var(--gr-text) !important;
+}
+[data-testid="stExpander"] summary [data-testid="stIconMaterial"] {
+    font-size: 1.3rem !important;
 }
 
 /* 코드 블록 (심의문구 표시) */
