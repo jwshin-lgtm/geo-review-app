@@ -117,17 +117,25 @@ CUSTOM_CSS = """
     border-color: var(--gr-border) !important;
 }
 
-/* 탭 - 선택된 탭은 네이비 알약, 아니면 흐린 텍스트 */
+/* 탭 - 세그먼트 컨트롤처럼 트랙 배경 안에서 선택된 탭만 알약으로 채움 */
 [data-testid="stTabs"] [role="tablist"] {
-    gap: 0.4rem;
+    gap: 0.25rem;
     border-bottom: none;
+    display: inline-flex;
+    background-color: var(--gr-bg-soft);
+    border: 1px solid var(--gr-border);
+    padding: 0.3rem;
+    border-radius: 999px;
 }
 [data-testid="stTab"] {
     border-radius: 999px !important;
     font-weight: 600;
     color: var(--gr-text-muted) !important;
-    padding: 0.4rem 1rem !important;
+    padding: 0.45rem 1.1rem !important;
     transition: all 0.15s ease;
+}
+[data-testid="stTab"]:hover {
+    color: var(--gr-primary) !important;
 }
 [data-testid="stTab"] p {
     color: inherit !important;
@@ -135,6 +143,7 @@ CUSTOM_CSS = """
 [data-testid="stTab"][aria-selected="true"] {
     color: #fff !important;
     background-color: var(--gr-primary) !important;
+    box-shadow: 0 1px 4px rgba(193, 98, 43, 0.35);
 }
 [data-testid="stTab"] .react-aria-SelectionIndicator {
     display: none;
