@@ -258,11 +258,11 @@ with tab_style_guide:
     st.write("")
 
     with st.container(border=True):
-        st.header("서술형 피드백 남기기")
-        st.caption("팀장님/광고주 피드백을 자유롭게 적으면, AI가 맥락을 보고 앞으로 반영할 만한 규칙이 있는지 찾아드려요.")
+        st.header("피드백 히스토리 추가")
+        st.caption("피드백 사항을 자유롭게 작성하면, 맥락을 파악해서 스타일 가이드에 추가할 내용을 제안해드려요.")
         feedback_text = st.text_area(
             "피드백 내용",
-            placeholder="예: 광고주가 이번 원고에서 상품명을 축약형으로 쓰지 말라고 했어요. 앞으로는 항상 정식 명칭을 쓰기로 했어요.",
+            placeholder="예: 이번 원고에서 상품명을 축약형으로 쓰지 말아 달라는 의견이 있었어요. 앞으로는 항상 정식 명칭을 쓰기로 했어요.",
             key="feedback_text_input",
         )
         if st.button("피드백 분석하기", type="primary"):
