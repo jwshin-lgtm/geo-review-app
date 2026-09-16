@@ -21,14 +21,22 @@ def badge_html(label: str, index: int) -> str:
 CUSTOM_CSS = """
 <style>
 :root {
-    --gr-primary: #26215C;
-    --gr-primary-dark: #1A1740;
-    --gr-bg-soft: #F9F9FB;
-    --gr-border: #E4E7EC;
-    --gr-text: #1A1D29;
-    --gr-text-muted: #6B7280;
+    --gr-primary: #C1622B;
+    --gr-primary-dark: #9C4E22;
+    --gr-bg-soft: #F1EAD9;
+    --gr-border: #E8DFCB;
+    --gr-text: #221F1B;
+    --gr-text-muted: #8C8577;
     --gr-radius: 12px;
     --gr-radius-sm: 8px;
+}
+
+/* 페이지 배경(크림톤). 카드는 흰 배경으로 대비를 줌 */
+[data-testid="stAppViewContainer"] {
+    background-color: #F7F4EC;
+}
+[data-testid="stVerticalBlockBorderWrapper"] {
+    background-color: #FFFFFF;
 }
 
 /* 전체 폭/여백 정리 */
@@ -91,7 +99,7 @@ CUSTOM_CSS = """
     background-color: var(--gr-primary);
     border: none;
     color: #fff;
-    box-shadow: 0 2px 8px rgba(38, 33, 92, 0.25);
+    box-shadow: 0 2px 8px rgba(193, 98, 43, 0.25);
 }
 [data-testid="stButton"] button[kind="primary"]:hover,
 [data-testid="stFormSubmitButton"] button[kind="primary"]:hover {
