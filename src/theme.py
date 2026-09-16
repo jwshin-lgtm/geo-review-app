@@ -2,7 +2,8 @@
 import streamlit as st
 
 # 카테고리 배지용 - 꽉 찬 원색 + 흰 글씨. 카테고리 개수가 늘어나면 순환해서 씀.
-BADGE_COLORS = ["#7F77DD", "#1D9E75", "#D4537E", "#378ADD", "#D85A30"]
+# 크림+테라코타 팔레트와 어울리도록 전부 따뜻한 톤으로 통일 (파란/보라 계열 제외).
+BADGE_COLORS = ["#B4432A", "#8A7B2E", "#6B7A3F", "#8C4A5C", "#C1862B"]
 
 
 def badge_color(index: int) -> str:
@@ -139,10 +140,38 @@ CUSTOM_CSS = """
     display: none;
 }
 
-/* 알림 박스 (success/info/warning/error) */
+/* 알림 박스 (success/info/warning/error) - Streamlit 기본 파란색 대신 팔레트 톤으로 */
 [data-testid="stAlertContainer"], [data-testid="stAlert"] {
     border-radius: var(--gr-radius-sm);
     border: 1px solid var(--gr-border);
+}
+[data-testid="stAlertContainer"]:has([data-testid="stAlertContentInfo"]) {
+    background-color: rgba(193, 98, 43, 0.08) !important;
+}
+[data-testid="stAlertContentInfo"] p,
+[data-testid="stAlertContentInfo"] [data-testid="stIconMaterial"] {
+    color: #9C4E22 !important;
+}
+[data-testid="stAlertContainer"]:has([data-testid="stAlertContentSuccess"]) {
+    background-color: rgba(107, 142, 35, 0.12) !important;
+}
+[data-testid="stAlertContentSuccess"] p,
+[data-testid="stAlertContentSuccess"] [data-testid="stIconMaterial"] {
+    color: #4B6B12 !important;
+}
+[data-testid="stAlertContainer"]:has([data-testid="stAlertContentWarning"]) {
+    background-color: rgba(217, 150, 6, 0.14) !important;
+}
+[data-testid="stAlertContentWarning"] p,
+[data-testid="stAlertContentWarning"] [data-testid="stIconMaterial"] {
+    color: #8A6100 !important;
+}
+[data-testid="stAlertContainer"]:has([data-testid="stAlertContentError"]) {
+    background-color: rgba(190, 60, 40, 0.10) !important;
+}
+[data-testid="stAlertContentError"] p,
+[data-testid="stAlertContentError"] [data-testid="stIconMaterial"] {
+    color: #8C2E1D !important;
 }
 
 /* 카드형 컨테이너 (st.container(border=True)) */
