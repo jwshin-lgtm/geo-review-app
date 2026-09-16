@@ -11,7 +11,18 @@ from collections import defaultdict
 
 import streamlit as st
 
-from src import compliance, config, docx_text, drive_client, highlighter, pattern_learning, reviser, sheets_client, theme
+from src import (
+    compliance,
+    config,
+    docx_text,
+    drive_client,
+    feedback,
+    highlighter,
+    pattern_learning,
+    reviser,
+    sheets_client,
+    theme,
+)
 
 st.set_page_config(page_title="GEO 원고 자동 수정", page_icon="✏️", layout="wide")
 theme.inject()
@@ -48,6 +59,7 @@ for key, default in {
     "batch_results": None,
     "product_list": None,
     "compliance_result": None,
+    "feedback_candidates": None,
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
@@ -242,6 +254,67 @@ with tab_style_guide:
                     pattern_learning.save_style_guide_cache(st.session_state.style_guide)
                     st.success("규칙을 추가했어요.")
                     st.rerun()
+
+    st.write("")
+
+    with st.container(border=True):
+        st.header("서술형 피드백 남기기")
+        st.caption("팀장님/광고주 피드백을 자유롭게 적으면, AI가 맥락을 보고 앞으로 반영할 만한 규칙이 있는지 찾아드려요.")
+        feedback_text = st.text_area(
+            "피드백 내용",
+            placeholder="예: 광고주가 이번 원고에서 상품명을 축약형으로 쓰지 말라고 했어요. 앞으로는 항상 정식 명칭을 쓰기로 했어요.",
+            key="feedback_text_input",
+        )
+        if st.button("피드백 분석하기", type="primary"):
+            if not feedback_text.strip():
+                st.warning("피드백 내용을 먼저 적어주세요.")
+            else:
+                feedback.append_feedback(feedback_text.strip())
+                with st.spinner("피드백 맥락을 분석하는 중이에요..."):
+                    try:
+                        candidates = feedback.analyze_feedback(feedback_text.strip(), st.session_state.style_guide)
+                    except Exception as exc:  # noqa: BLE001
+                        st.error(f"분석 중 문제가 생겼어요: {exc}")
+                        candidates = []
+                st.session_state.feedback_candidates = candidates
+                if not candidates:
+                    st.info("이 피드백에서는 새로 반영할 규칙을 찾지 못했어요. (그래도 기록에는 남겨뒀어요)")
+
+        if st.session_state.feedback_candidates:
+            st.write("**반영할 만한 규칙 후보 - 원하는 것만 골라서 추가하세요**")
+            selected_candidates = []
+            for i, candidate in enumerate(st.session_state.feedback_candidates):
+                checked = st.checkbox(
+                    f"[{candidate.get('category', '기타')}] {candidate.get('rule', '')}",
+                    value=True,
+                    key=f"fb_candidate_{i}",
+                    help=candidate.get("rationale", ""),
+                )
+                if checked:
+                    selected_candidates.append(candidate)
+
+            if st.button("선택한 규칙 스타일 가이드에 추가"):
+                updated_rules = (st.session_state.style_guide or {}).get("rules", [])
+                for candidate in selected_candidates:
+                    updated_rules.append(
+                        {
+                            "category": candidate.get("category", "기타"),
+                            "rule": candidate.get("rule", ""),
+                            "example_before": candidate.get("example_before", ""),
+                            "example_after": candidate.get("example_after", ""),
+                        }
+                    )
+                st.session_state.style_guide = {"rules": updated_rules}
+                pattern_learning.save_style_guide_cache(st.session_state.style_guide)
+                st.session_state.feedback_candidates = None
+                st.success(f"{len(selected_candidates)}개 규칙을 추가했어요.")
+                st.rerun()
+
+        feedback_log = feedback.load_feedback_log()
+        if feedback_log:
+            with st.expander(f"지난 피드백 기록 ({len(feedback_log)}건)", expanded=False):
+                for entry in reversed(feedback_log[-20:]):
+                    st.write(f"- {entry['timestamp']} : {entry['text']}")
 
     st.write("")
 
