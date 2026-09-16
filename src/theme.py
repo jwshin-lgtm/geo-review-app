@@ -143,10 +143,18 @@ CUSTOM_CSS = """
     border-color: var(--gr-border) !important;
 }
 
-/* 익스팬더 */
+/* 익스팬더 - 제목을 소제목처럼 굵고 크게 */
 [data-testid="stExpander"] {
     border-radius: var(--gr-radius-sm);
     border-color: var(--gr-border);
+}
+[data-testid="stExpander"] summary {
+    padding: 0.9rem 1rem;
+}
+[data-testid="stExpander"] summary p {
+    font-size: 1.05rem !important;
+    font-weight: 700 !important;
+    color: var(--gr-text);
 }
 
 /* 코드 블록 (심의문구 표시) */
