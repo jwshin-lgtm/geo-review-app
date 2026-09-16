@@ -148,6 +148,21 @@ CUSTOM_CSS = """
 [data-testid="stTab"] .react-aria-SelectionIndicator {
     display: none;
 }
+/* BaseWeb 기본 밑줄 인디케이터/베이스라인이 트랙 아래에 그대로 남아 선까지 겹쳐 보이던 문제 제거 */
+[data-testid="stTabs"] [data-baseweb="tab-highlight"],
+[data-testid="stTabs"] [data-baseweb="tab-border"] {
+    display: none !important;
+}
+[data-testid="stTabs"] {
+    border-bottom: none !important;
+}
+/* 탭 바로 아래 첫 카드가 붙어 보이도록 간격 축소 */
+[data-testid="stTabs"] [role="tablist"] {
+    margin-bottom: 1.2rem;
+}
+[data-testid="stTabs"] [role="tabpanel"] {
+    padding-top: 0 !important;
+}
 
 /* 알림 박스 (success/info/warning/error) - Streamlit 기본 파란색 대신 팔레트 톤으로 */
 [data-testid="stAlertContainer"], [data-testid="stAlert"] {

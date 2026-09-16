@@ -25,7 +25,7 @@ from src import (
     word_comments,
 )
 
-st.set_page_config(page_title="GEO 원고 자동 수정", page_icon="✏️", layout="wide")
+st.set_page_config(page_title="GEO원고, 알아서 다듬어드려요", page_icon="✏️", layout="wide")
 theme.inject()
 
 
@@ -37,7 +37,7 @@ def _check_password() -> bool:
     if st.session_state.get("authenticated"):
         return True
 
-    st.title("GEO 원고 자동 수정")
+    st.title("GEO원고, 알아서 다듬어드려요")
     st.info("우리 팀만 쓰는 도구예요. 비밀번호를 입력해주세요.")
     password = st.text_input("비밀번호", type="password")
     if st.button("들어가기"):
@@ -52,7 +52,7 @@ def _check_password() -> bool:
 if not _check_password():
     st.stop()
 
-st.title("GEO 원고 자동 수정")
+st.title("GEO원고, 알아서 다듬어드려요")
 
 for key, default in {
     "month_folders": None,
