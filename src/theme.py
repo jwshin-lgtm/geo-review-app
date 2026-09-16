@@ -117,22 +117,25 @@ CUSTOM_CSS = """
     border-color: var(--gr-border) !important;
 }
 
-/* 탭 - 세그먼트 컨트롤처럼 트랙 배경 안에서 선택된 탭만 알약으로 채움 */
+/* 탭 - 밑줄형(언더라인) 탭. 전체 폭 얇은 베이스라인 + 선택된 탭만 굵게+포인트컬러 밑줄 */
 [data-testid="stTabs"] [role="tablist"] {
-    gap: 0.25rem;
-    border-bottom: none;
-    display: inline-flex;
-    background-color: var(--gr-bg-soft);
-    border: 1px solid var(--gr-border);
-    padding: 0.3rem;
-    border-radius: 999px;
+    gap: 1.6rem;
+    display: flex;
+    background-color: transparent;
+    border: none;
+    border-bottom: 1px solid var(--gr-border);
+    padding: 0;
+    border-radius: 0;
+    margin-bottom: 1.4rem;
 }
 [data-testid="stTab"] {
-    border-radius: 999px !important;
-    font-weight: 600;
+    border-radius: 0 !important;
+    font-weight: 500;
     color: var(--gr-text-muted) !important;
-    padding: 0.45rem 1.1rem !important;
-    transition: all 0.15s ease;
+    padding: 0.6rem 0.1rem !important;
+    margin-bottom: -1px;
+    border-bottom: 2px solid transparent !important;
+    transition: color 0.15s ease, border-color 0.15s ease;
 }
 [data-testid="stTab"]:hover {
     color: var(--gr-primary) !important;
@@ -141,24 +144,22 @@ CUSTOM_CSS = """
     color: inherit !important;
 }
 [data-testid="stTab"][aria-selected="true"] {
-    color: #fff !important;
-    background-color: var(--gr-primary) !important;
-    box-shadow: 0 1px 4px rgba(193, 98, 43, 0.35);
+    color: var(--gr-primary) !important;
+    background-color: transparent !important;
+    font-weight: 700;
+    border-bottom: 2px solid var(--gr-primary) !important;
+    box-shadow: none;
 }
 [data-testid="stTab"] .react-aria-SelectionIndicator {
     display: none;
 }
-/* BaseWeb 기본 밑줄 인디케이터/베이스라인이 트랙 아래에 그대로 남아 선까지 겹쳐 보이던 문제 제거 */
+/* BaseWeb 기본 밑줄 인디케이터가 우리 밑줄과 겹쳐 두 줄로 보이던 문제 제거 */
 [data-testid="stTabs"] [data-baseweb="tab-highlight"],
 [data-testid="stTabs"] [data-baseweb="tab-border"] {
     display: none !important;
 }
 [data-testid="stTabs"] {
     border-bottom: none !important;
-}
-/* 탭 바로 아래 첫 카드가 붙어 보이도록 간격 축소 */
-[data-testid="stTabs"] [role="tablist"] {
-    margin-bottom: 1.2rem;
 }
 [data-testid="stTabs"] [role="tabpanel"] {
     padding-top: 0 !important;
