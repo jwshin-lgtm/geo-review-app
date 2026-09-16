@@ -18,12 +18,20 @@ _COMMENTS_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordproc
 _COMMENTS_REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments"
 
 
-def _get_or_create_comments_part(document) -> XmlPart:
+def _get_comments_part(document) -> XmlPart | None:
     document_part = document.part
     for rel in document_part.rels.values():
         if rel.reltype == _COMMENTS_REL_TYPE:
             return rel.target_part
+    return None
 
+
+def _get_or_create_comments_part(document) -> XmlPart:
+    existing = _get_comments_part(document)
+    if existing is not None:
+        return existing
+
+    document_part = document.part
     comments_element = OxmlElement("w:comments")
     comments_part = XmlPart(
         _COMMENTS_PART_URI, _COMMENTS_CONTENT_TYPE, comments_element, document_part.package
@@ -94,3 +102,56 @@ def add_comment_to_paragraph(
     p.insert(insert_index, range_start)
     p.append(range_end)
     p.append(ref_run)
+
+
+def _comment_texts_by_id(comments_part) -> dict[str, dict]:
+    if comments_part is None:
+        return {}
+    texts = {}
+    for comment_el in comments_part.element.findall(qn("w:comment")):
+        comment_id = comment_el.get(qn("w:id"))
+        author = comment_el.get(qn("w:author")) or ""
+        text = "".join(t.text or "" for t in comment_el.iter(qn("w:t")))
+        texts[comment_id] = {"author": author, "text": text}
+    return texts
+
+
+def extract_comments(document) -> list[dict]:
+    """문서에 달린 Word 코멘트를, 코멘트가 달린 원문 텍스트와 함께 추출한다.
+
+    최종본이 아니어도(리뷰 중인 원고여도) 사람이 남긴 검토 코멘트를 학습
+    재료로 쓸 수 있게 하기 위한 용도. 반환: [{"anchored_text", "comment", "author"}, ...]
+    """
+    comments_part = _get_comments_part(document)
+    comment_texts = _comment_texts_by_id(comments_part)
+    if not comment_texts:
+        return []
+
+    results = []
+    for paragraph in document.paragraphs:
+        active_ids: set[str] = set()
+        collected: dict[str, list[str]] = {}
+        for el in paragraph._p.iter():
+            if el.tag == qn("w:commentRangeStart"):
+                comment_id = el.get(qn("w:id"))
+                if comment_id in comment_texts:
+                    active_ids.add(comment_id)
+                    collected.setdefault(comment_id, [])
+            elif el.tag == qn("w:commentRangeEnd"):
+                active_ids.discard(el.get(qn("w:id")))
+            elif el.tag == qn("w:t"):
+                for comment_id in active_ids:
+                    collected[comment_id].append(el.text or "")
+
+        for comment_id, parts in collected.items():
+            info = comment_texts[comment_id]
+            if not info["text"].strip():
+                continue
+            results.append(
+                {
+                    "anchored_text": "".join(parts).strip(),
+                    "comment": info["text"].strip(),
+                    "author": info["author"],
+                }
+            )
+    return results

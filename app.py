@@ -22,6 +22,7 @@ from src import (
     reviser,
     sheets_client,
     theme,
+    word_comments,
 )
 
 st.set_page_config(page_title="GEO 원고 자동 수정", page_icon="✏️", layout="wide")
@@ -280,7 +281,44 @@ with tab_style_guide:
                 if not candidates:
                     st.info("이 피드백에서는 새로 반영할 규칙을 찾지 못했어요. (그래도 기록에는 남겨뒀어요)")
 
-        if st.session_state.feedback_candidates:
+        feedback_log = feedback.load_feedback_log()
+        if feedback_log:
+            with st.expander(f"지난 피드백 기록 ({len(feedback_log)}건)", expanded=False):
+                for entry in reversed(feedback_log[-20:]):
+                    st.write(f"- {entry['timestamp']} : {entry['text']}")
+
+    st.write("")
+
+    with st.container(border=True):
+        st.header("피드백이 담긴 원고에서 학습")
+        st.caption("최종본은 아니어도, 검토 코멘트(Word 메모)가 달린 원고를 올리면 그 코멘트들을 분석해서 스타일 가이드 후보를 뽑아드려요.")
+        uploaded_file = st.file_uploader("코멘트가 달린 .docx 파일 업로드", type=["docx"], key="comment_doc_upload")
+        if uploaded_file is not None and st.button("코멘트 분석하기", type="primary"):
+            doc_bytes = uploaded_file.read()
+            uploaded_doc = docx_text.load_document(doc_bytes)
+            doc_comments = word_comments.extract_comments(uploaded_doc)
+            if not doc_comments:
+                st.info("이 문서에서 Word 코멘트를 찾지 못했어요.")
+            else:
+                combined_text = "\n\n".join(
+                    f"[원문] {c['anchored_text']}\n[코멘트] {c['comment']}" for c in doc_comments
+                )
+                feedback.append_feedback(f"(업로드 문서 코멘트 {len(doc_comments)}건 - {uploaded_file.name})\n{combined_text}")
+                with st.spinner(f"코멘트 {len(doc_comments)}건을 분석하는 중이에요..."):
+                    try:
+                        candidates = feedback.analyze_feedback(combined_text, st.session_state.style_guide)
+                    except Exception as exc:  # noqa: BLE001
+                        st.error(f"분석 중 문제가 생겼어요: {exc}")
+                        candidates = []
+                st.session_state.feedback_candidates = candidates
+                st.success(f"코멘트 {len(doc_comments)}건을 확인했어요.")
+                if not candidates:
+                    st.info("반영할 만한 규칙을 찾지 못했어요.")
+
+    st.write("")
+
+    if st.session_state.feedback_candidates:
+        with st.container(border=True):
             st.write("**반영할 만한 규칙 후보 - 원하는 것만 골라서 추가하세요**")
             selected_candidates = []
             for i, candidate in enumerate(st.session_state.feedback_candidates):
@@ -309,12 +347,6 @@ with tab_style_guide:
                 st.session_state.feedback_candidates = None
                 st.success(f"{len(selected_candidates)}개 규칙을 추가했어요.")
                 st.rerun()
-
-        feedback_log = feedback.load_feedback_log()
-        if feedback_log:
-            with st.expander(f"지난 피드백 기록 ({len(feedback_log)}건)", expanded=False):
-                for entry in reversed(feedback_log[-20:]):
-                    st.write(f"- {entry['timestamp']} : {entry['text']}")
 
     st.write("")
 
