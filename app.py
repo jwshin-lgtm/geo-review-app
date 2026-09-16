@@ -224,41 +224,6 @@ with tab_style_guide:
     rules = (st.session_state.style_guide or {}).get("rules", [])
 
     with st.container(border=True):
-        st.header("규칙 직접 추가하기")
-        st.caption("자동으로 배운 것 말고도, 팀이 이미 알고 있는 규칙을 메모로 바로 추가할 수 있어요.")
-        existing_categories = sorted({r.get("category", "기타") for r in rules}) or ["기타"]
-        with st.form("add_rule_form", clear_on_submit=True):
-            new_rule_text = st.text_area("어떤 규칙을 추가할까요?", placeholder="예: 상품명 뒤에는 항상 '(사후관리형)'을 붙여요")
-            col_a, col_b = st.columns([2, 1])
-            with col_a:
-                category_choice = st.selectbox("카테고리", existing_categories + ["+ 새 카테고리"])
-            with col_b:
-                new_category_name = st.text_input("새 카테고리 이름 (선택했을 때만)")
-            submitted = st.form_submit_button("규칙 추가하기")
-            if submitted:
-                if not new_rule_text.strip():
-                    st.warning("규칙 내용을 먼저 적어주세요.")
-                else:
-                    final_category = (
-                        new_category_name.strip() if category_choice == "+ 새 카테고리" and new_category_name.strip()
-                        else category_choice
-                    )
-                    rules.append(
-                        {
-                            "category": final_category or "기타",
-                            "rule": new_rule_text.strip(),
-                            "example_before": "",
-                            "example_after": "(직접 추가한 규칙)",
-                        }
-                    )
-                    st.session_state.style_guide = {"rules": rules}
-                    pattern_learning.save_style_guide_cache(st.session_state.style_guide)
-                    st.success("규칙을 추가했어요.")
-                    st.rerun()
-
-    st.write("")
-
-    with st.container(border=True):
         st.header("피드백 히스토리 추가")
         st.caption("피드백 사항을 자유롭게 작성하면, 맥락을 파악해서 스타일 가이드에 추가할 내용을 제안해드려요.")
         feedback_text = st.text_area(
@@ -290,7 +255,7 @@ with tab_style_guide:
     st.write("")
 
     with st.container(border=True):
-        st.header("피드백이 담긴 원고에서 학습")
+        st.header("중간과정 원고 살펴보기")
         st.caption("최종본은 아니어도, 검토 코멘트(Word 메모)가 달린 원고를 올리면 그 코멘트들을 분석해서 스타일 가이드 후보를 뽑아드려요.")
         uploaded_file = st.file_uploader("코멘트가 달린 .docx 파일 업로드", type=["docx"], key="comment_doc_upload")
         if uploaded_file is not None and st.button("코멘트 분석하기", type="primary"):
@@ -351,45 +316,99 @@ with tab_style_guide:
     st.write("")
 
     with st.container(border=True):
-        st.header("전체 규칙 보기")
+        with st.expander("규칙 직접 추가하기", expanded=False):
+            st.caption("자동으로 배운 것 말고도, 팀이 이미 알고 있는 규칙을 메모로 바로 추가할 수 있어요.")
+            existing_categories = sorted({r.get("category", "기타") for r in rules}) or ["기타"]
+            with st.form("add_rule_form", clear_on_submit=True):
+                new_rule_text = st.text_area("어떤 규칙을 추가할까요?", placeholder="예: 상품명 뒤에는 항상 '(사후관리형)'을 붙여요")
+                col_a, col_b = st.columns([2, 1])
+                with col_a:
+                    category_choice = st.selectbox("카테고리", existing_categories + ["+ 새 카테고리"])
+                with col_b:
+                    new_category_name = st.text_input("새 카테고리 이름 (선택했을 때만)")
+                submitted = st.form_submit_button("규칙 추가하기")
+                if submitted:
+                    if not new_rule_text.strip():
+                        st.warning("규칙 내용을 먼저 적어주세요.")
+                    else:
+                        final_category = (
+                            new_category_name.strip()
+                            if category_choice == "+ 새 카테고리" and new_category_name.strip()
+                            else category_choice
+                        )
+                        rules.append(
+                            {
+                                "category": final_category or "기타",
+                                "rule": new_rule_text.strip(),
+                                "example_before": "",
+                                "example_after": "(직접 추가한 규칙)",
+                            }
+                        )
+                        st.session_state.style_guide = {"rules": rules}
+                        pattern_learning.save_style_guide_cache(st.session_state.style_guide)
+                        st.success("규칙을 추가했어요.")
+                        st.rerun()
 
-        if not rules:
-            st.info("아직 규칙이 없어요. '원고 리스트' 탭에서 학습을 반영하거나, 위에서 직접 추가해보세요.")
-        else:
-            st.caption("카테고리별로 접어뒀어요. 펼쳐서 확인하고 고친 다음, 아래 저장 버튼을 눌러주세요.")
-            grouped = defaultdict(list)
-            for rule in rules:
-                grouped[rule.get("category", "기타")].append(rule)
+    st.write("")
 
-            pending_by_category = {}
-            for i, (category, items) in enumerate(grouped.items()):
-                rows = [
-                    {
-                        "rule": r.get("rule", ""),
-                        "example_before": r.get("example_before", ""),
-                        "example_after": r.get("example_after", ""),
-                    }
-                    for r in items
-                ]
-                st.markdown(theme.badge_html(category, i), unsafe_allow_html=True)
-                with st.expander(f"{len(rows)}개 규칙 보기", expanded=False):
-                    edited_rows = st.data_editor(
-                        rows,
-                        num_rows="dynamic",
-                        use_container_width=True,
-                        key=f"style_cat_{category}",
-                    )
-                    pending_by_category[category] = edited_rows
+    with st.container(border=True):
+        with st.expander("전체 규칙 보기", expanded=False):
+            if not rules:
+                st.info("아직 규칙이 없어요. '원고 리스트' 탭에서 학습을 반영하거나, 위에서 직접 추가해보세요.")
+            else:
+                search_query = st.text_input(
+                    "규칙 검색", placeholder="규칙 내용이나 카테고리로 검색해보세요", key="rule_search_query"
+                ).strip()
 
-            if st.button("저장하기"):
-                new_rules = []
-                for category, edited_rows in pending_by_category.items():
-                    for row in edited_rows:
-                        if (row.get("rule") or "").strip():
-                            new_rules.append({"category": category, **row})
-                st.session_state.style_guide = {"rules": new_rules}
-                pattern_learning.save_style_guide_cache(st.session_state.style_guide)
-                st.success("저장했어요.")
+                if search_query:
+                    matched = [
+                        r
+                        for r in rules
+                        if search_query.lower() in r.get("rule", "").lower()
+                        or search_query.lower() in r.get("category", "").lower()
+                    ]
+                    st.caption(f"검색 결과 {len(matched)}건 (검색 중에는 조회만 가능해요. 수정하려면 검색어를 지워주세요.)")
+                    for r in matched:
+                        st.markdown(theme.badge_html(r.get("category", "기타"), 0), unsafe_allow_html=True)
+                        st.write(r.get("rule", ""))
+                        if r.get("example_before") or r.get("example_after"):
+                            st.caption(f"예시: {r.get('example_before', '')} -> {r.get('example_after', '')}")
+                        st.write("")
+                else:
+                    st.caption("카테고리별로 접어뒀어요. 펼쳐서 확인하고 고친 다음, 아래 저장 버튼을 눌러주세요.")
+                    grouped = defaultdict(list)
+                    for rule in rules:
+                        grouped[rule.get("category", "기타")].append(rule)
+
+                    pending_by_category = {}
+                    for i, (category, items) in enumerate(grouped.items()):
+                        rows = [
+                            {
+                                "rule": r.get("rule", ""),
+                                "example_before": r.get("example_before", ""),
+                                "example_after": r.get("example_after", ""),
+                            }
+                            for r in items
+                        ]
+                        st.markdown(theme.badge_html(category, i), unsafe_allow_html=True)
+                        with st.expander(f"{len(rows)}개 규칙 보기", expanded=False):
+                            edited_rows = st.data_editor(
+                                rows,
+                                num_rows="dynamic",
+                                use_container_width=True,
+                                key=f"style_cat_{category}",
+                            )
+                            pending_by_category[category] = edited_rows
+
+                    if st.button("저장하기"):
+                        new_rules = []
+                        for category, edited_rows in pending_by_category.items():
+                            for row in edited_rows:
+                                if (row.get("rule") or "").strip():
+                                    new_rules.append({"category": category, **row})
+                        st.session_state.style_guide = {"rules": new_rules}
+                        pattern_learning.save_style_guide_cache(st.session_state.style_guide)
+                        st.success("저장했어요.")
 
 
 # ══════════════════════════════════════════════════════════════════════
