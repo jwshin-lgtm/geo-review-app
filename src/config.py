@@ -74,7 +74,7 @@ FINAL_FOLDER_NAME_CANDIDATES = ["최종본", "최종", "final", "Final"]
 GOOGLE_DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 GOOGLE_NATIVE_DOC_MIME = "application/vnd.google-apps.document"
 
-GEMINI_MODEL = _get("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = _get("GEMINI_MODEL", "gemini-3.6-flash")
 
 # Space가 Public이어도 아무나 못 쓰게 막는 팀 공용 비밀번호. 시크릿에 없으면 잠금 화면 자체를 건너뛴다
 # (로컬 개발 편의용 - 실제 배포 시에는 반드시 APP_PASSWORD 시크릿을 넣을 것).
