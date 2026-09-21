@@ -6,9 +6,14 @@ GitHub Actions 스케줄(.github/workflows/daily_learn.yml)에서 이 스크립�
 바로 최신 상태로 보인다. 무료 API 사용량 한도 때문에 오늘 실패해도, 이 스크립트가
 내일 다시 자동으로 시도한다.
 """
+import os
 import sys
 
-from src import pattern_learning
+# 이 스크립트를 어느 경로에서 실행하든(scripts/ 밖에서 실행해도) 저장소 루트를
+# 항상 파이썬 검색 경로에 넣어서 'src' 패키지를 확실히 찾게 한다.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src import pattern_learning  # noqa: E402
 
 
 def main() -> int:
