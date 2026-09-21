@@ -11,13 +11,27 @@ from . import config
 
 _client: genai.Client | None = None
 
-# 일시적 과부하/속도제한 에러 - 몇 초 기다렸다가 다시 시도하면 대부분 해결됨
-_TRANSIENT_MARKERS = ("503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED", "overloaded")
+# 일시적 과부하 에러 - 몇 초 기다렸다가 다시 시도하면 대부분 해결됨
+_TRANSIENT_MARKERS = ("503", "UNAVAILABLE", "overloaded")
+
+# 사용량 한도(429/RESOURCE_EXHAUSTED) 초과는 "일시적"이 아니라 그 날의 요청 가능
+# 횟수를 이미 다 쓴 것이므로, 재시도해봤자 같은 실패가 반복되며 남은 한도만 더 깎아먹는다.
+# 즉시 포기하고 위로 명확히 알려야 한다.
+_QUOTA_MARKERS = ("429", "RESOURCE_EXHAUSTED", "quota")
 
 
 def _is_transient_error(exc: Exception) -> bool:
     message = str(exc)
     return any(marker in message for marker in _TRANSIENT_MARKERS)
+
+
+def _is_quota_error(exc: Exception) -> bool:
+    message = str(exc)
+    return any(marker in message for marker in _QUOTA_MARKERS)
+
+
+class GeminiQuotaExceededError(RuntimeError):
+    """Gemini API 사용량 한도(일일 요청 수 등)를 초과했을 때 발생. 재시도로 해결되지 않는다."""
 
 
 def get_client() -> genai.Client:
@@ -61,6 +75,10 @@ def generate_json(
                 config=generation_config,
             )
         except Exception as exc:  # noqa: BLE001 - API 호출 자체의 실패 원인을 그대로 보존
+            if _is_quota_error(exc):
+                raise GeminiQuotaExceededError(
+                    f"Gemini API 사용량 한도를 초과했습니다: {exc}"
+                ) from exc
             last_error = exc
             if _is_transient_error(exc) and attempt < max_retries:
                 time.sleep(2 ** (attempt + 1))

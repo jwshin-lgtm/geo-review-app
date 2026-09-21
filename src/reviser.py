@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 
 from . import gemini_client
+from .gemini_client import GeminiQuotaExceededError
 
 REVISION_SCHEMA = {
     "type": "object",
@@ -87,7 +88,17 @@ def revise_paragraphs(style_guide: dict, paragraphs: list[str]) -> tuple[list[di
     error_messages: list[str] = []
     for start in range(0, len(paragraphs), _BATCH_SIZE):
         batch = paragraphs[start : start + _BATCH_SIZE]
-        revisions, error_message = _revise_batch(style_guide, batch)
+        try:
+            revisions, error_message = _revise_batch(style_guide, batch)
+        except GeminiQuotaExceededError as exc:
+            # 한도 초과는 재시도해도 남은 배치도 전부 같은 이유로 실패한다.
+            # 남은 문단은 요청조차 보내지 않고(=한도를 더 깎지 않고) 원본 그대로 채운다.
+            for i, text in enumerate(paragraphs[start:]):
+                all_revisions.append(
+                    {"index": start + i, "revised_text": text, "changed": False, "reason": "", "suggestion": ""}
+                )
+            error_messages.append(str(exc))
+            break
         for r in revisions:
             r["index"] += start
         all_revisions.extend(revisions)
@@ -118,6 +129,8 @@ def _revise_batch(style_guide: dict, paragraphs: list[str]) -> tuple[list[dict],
             revisions = result["revisions"]
             _validate(revisions, paragraphs)
             return revisions, None
+        except GeminiQuotaExceededError:
+            raise  # 한도 초과는 재시도하지 않고 즉시 위로 전달한다.
         except Exception as exc:  # noqa: BLE001 - 원인을 보존해 위로 전달
             last_error = exc
             continue
