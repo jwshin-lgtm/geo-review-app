@@ -86,18 +86,23 @@ with tab_manuscripts:
 
         if st.button("새 원고 있는지 확인하기", type="primary"):
             with st.spinner("드라이브를 살펴보는 중이에요. 원고가 많으면 조금 걸릴 수 있어요..."):
-                result = pattern_learning.scan_and_accumulate_learning()
-            st.session_state.style_guide = result["style_guide"]
-            if result["new_pairs"] > 0:
-                st.success(
-                    f"새 원고 {result['new_pairs']}건, 방금 배웠어요. "
-                    f"(누적 예시 {result['total_examples']}건, 규칙 {len(result['style_guide'].get('rules', []))}개)"
-                )
-            else:
-                st.info("새로 배울 원고가 없어요. 이미 최신이에요.")
-            if result["skipped_months"]:
-                st.caption(f"초안·최종본 폴더를 못 찾아서 건너뛴 달: {', '.join(result['skipped_months'])}")
-            _learning_state = pattern_learning.load_learning_state()
+                try:
+                    result = pattern_learning.scan_and_accumulate_learning()
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"학습 중 문제가 생겼어요: {exc}")
+                    result = None
+            if result is not None:
+                st.session_state.style_guide = result["style_guide"]
+                if result["new_pairs"] > 0:
+                    st.success(
+                        f"새 원고 {result['new_pairs']}건, 방금 배웠어요. "
+                        f"(누적 예시 {result['total_examples']}건, 규칙 {len(result['style_guide'].get('rules', []))}개)"
+                    )
+                else:
+                    st.info("새로 배울 원고가 없어요. 이미 최신이에요.")
+                if result["skipped_months"]:
+                    st.caption(f"초안·최종본 폴더를 못 찾아서 건너뛴 달: {', '.join(result['skipped_months'])}")
+                _learning_state = pattern_learning.load_learning_state()
 
         _learned_month_labels = pattern_learning.sorted_month_labels(_learning_state.get("learned_months", []))
         if _learned_month_labels:
