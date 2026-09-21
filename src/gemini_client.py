@@ -22,6 +22,10 @@ _TRANSIENT_MARKERS = ("503", "UNAVAILABLE", "overloaded")
 # 즉시 포기하고 위로 명확히 알려야 한다.
 _QUOTA_MARKERS = ("429", "RESOURCE_EXHAUSTED", "quota")
 
+# 모델 자체가 이 키/프로젝트에서 지원 종료(404)된 경우 - 재시도해도 절대 안 되므로
+# 즉시 다음 모델로 넘어간다.
+_NOT_FOUND_MARKERS = ("404", "NOT_FOUND")
+
 
 def _is_transient_error(exc: Exception) -> bool:
     message = str(exc)
@@ -33,8 +37,17 @@ def _is_quota_error(exc: Exception) -> bool:
     return any(marker in message for marker in _QUOTA_MARKERS)
 
 
+def _is_not_found_error(exc: Exception) -> bool:
+    message = str(exc)
+    return any(marker in message for marker in _NOT_FOUND_MARKERS)
+
+
 class GeminiQuotaExceededError(RuntimeError):
     """Gemini API 사용량 한도(일일 요청 수 등)를 초과했을 때 발생. 재시도로 해결되지 않는다."""
+
+
+class GeminiModelNotFoundError(RuntimeError):
+    """이 키/프로젝트에서 해당 모델을 더 이상 지원하지 않을 때 발생. 다른 모델로 넘어가야 한다."""
 
 
 def _get_client_by_index(index: int) -> genai.Client:
@@ -45,20 +58,23 @@ def _get_client_by_index(index: int) -> genai.Client:
 
 def _call_once(
     client: genai.Client,
+    model: str,
     generation_config: types.GenerateContentConfig,
     user_content: str,
     max_retries: int,
 ):
-    """키 하나로 호출하고, 일시적 에러(503 등)만 재시도한다.
+    """키 하나 + 모델 하나 조합으로 호출하고, 일시적 에러(503 등)만 재시도한다.
 
     한도 초과(429/RESOURCE_EXHAUSTED)는 이 키로는 더 재시도해도 소용없으므로
     즉시 GeminiQuotaExceededError를 던져 호출측이 다음 키로 넘어가게 한다.
+    모델 지원 종료(404/NOT_FOUND)는 이 모델로는 절대 안 되므로 즉시
+    GeminiModelNotFoundError를 던져 호출측이 다음 모델로 넘어가게 한다.
     """
     last_error: Exception | None = None
     for attempt in range(max_retries + 1):
         try:
             response = client.models.generate_content(
-                model=config.GEMINI_MODEL,
+                model=model,
                 contents=user_content,
                 config=generation_config,
             )
@@ -66,6 +82,10 @@ def _call_once(
             if _is_quota_error(exc):
                 raise GeminiQuotaExceededError(
                     f"Gemini API 사용량 한도를 초과했습니다: {exc}"
+                ) from exc
+            if _is_not_found_error(exc):
+                raise GeminiModelNotFoundError(
+                    f"모델 '{model}'을(를) 이 키에서 지원하지 않습니다: {exc}"
                 ) from exc
             last_error = exc
             if _is_transient_error(exc) and attempt < max_retries:
@@ -111,13 +131,16 @@ def generate_json(
 
     GEMINI_API_KEYS에 키가 여러 개 등록되어 있으면(팀원별로 무료 키를 나눠 등록한
     경우), 현재 키가 사용량 한도를 초과했을 때 자동으로 다음 키로 넘어가서 계속
-    시도한다. 등록된 키가 모두 한도를 초과해야 최종적으로 실패한다.
+    시도한다. GEMINI_MODELS에 등록된 모델(기본 모델 + 대체 모델들)도 한 모델이
+    지원 종료(404)되거나 계속 과부하(503)이면 자동으로 다음 모델로 넘어간다.
+    키 x 모델의 모든 조합이 실패해야 최종적으로 실패한다.
     """
     global _current_key_index
 
     keys = config.GEMINI_API_KEYS
     if not keys:
         raise RuntimeError("GEMINI_API_KEY가 설정되어 있지 않습니다. secrets.toml을 확인하세요.")
+    models = config.GEMINI_MODELS
 
     generation_config = types.GenerateContentConfig(
         system_instruction=system_instruction,
@@ -130,14 +153,22 @@ def generate_json(
     for offset in range(len(keys)):
         key_index = (_current_key_index + offset) % len(keys)
         client = _get_client_by_index(key_index)
-        try:
-            result = _call_once(client, generation_config, user_content, max_retries)
-        except GeminiQuotaExceededError as exc:
-            last_error = exc
+        quota_exceeded_for_key = False
+        for model in models:
+            try:
+                result = _call_once(client, model, generation_config, user_content, max_retries)
+            except GeminiQuotaExceededError as exc:
+                last_error = exc
+                quota_exceeded_for_key = True
+                break  # 한도 초과는 모델을 바꿔도 소용없다 - 바로 다음 키로
+            except Exception as exc:  # noqa: BLE001 - GeminiModelNotFoundError 및 그 외 실패 모두 다음 모델로
+                last_error = exc
+                continue
+            _current_key_index = key_index
+            return result
+        if quota_exceeded_for_key:
             continue
-        _current_key_index = key_index
-        return result
 
-    raise GeminiQuotaExceededError(
-        f"등록된 API 키 {len(keys)}개가 모두 사용량 한도를 초과했습니다: {last_error}"
+    raise RuntimeError(
+        f"등록된 API 키 {len(keys)}개 x 모델 {len(models)}개 조합이 모두 실패했습니다: {last_error}"
     )

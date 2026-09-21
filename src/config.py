@@ -76,6 +76,12 @@ GOOGLE_NATIVE_DOC_MIME = "application/vnd.google-apps.document"
 
 GEMINI_MODEL = _get("GEMINI_MODEL", "gemini-3.6-flash")
 
+# 특정 모델이 계정/프로젝트에서 막혀 있거나(404) 일시적으로 과부하(503)일 때
+# 자동으로 다음 모델로 넘어가서 계속 시도한다. GEMINI_MODEL이 항상 맨 앞에 온다.
+_fallback_models_raw = _get("GEMINI_MODEL_FALLBACKS", "gemini-2.5-flash,gemini-flash-latest")
+_fallback_models = [m.strip() for m in _fallback_models_raw.split(",") if m.strip()]
+GEMINI_MODELS = [GEMINI_MODEL] + [m for m in _fallback_models if m != GEMINI_MODEL]
+
 # Space가 Public이어도 아무나 못 쓰게 막는 팀 공용 비밀번호. 시크릿에 없으면 잠금 화면 자체를 건너뛴다
 # (로컬 개발 편의용 - 실제 배포 시에는 반드시 APP_PASSWORD 시크릿을 넣을 것).
 APP_PASSWORD = _get("APP_PASSWORD")
