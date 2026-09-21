@@ -89,7 +89,7 @@ def _call_once(
                 ) from exc
             last_error = exc
             if _is_transient_error(exc) and attempt < max_retries:
-                time.sleep(2 ** (attempt + 1))
+                time.sleep(2)  # 조합(키x모델)이 여러 개 있으므로, 한 조합에서 길게 기다리지 않고 짧게만 쉬었다 넘어간다
             continue
 
         finish_reason = None
@@ -118,16 +118,15 @@ def generate_json(
     system_instruction: str,
     user_content: str,
     response_schema: dict | None = None,
-    max_retries: int = 3,
+    max_retries: int = 1,
     max_output_tokens: int = 32768,
 ):
     """Gemini에 JSON 응답을 요청하고 파싱해서 반환한다.
 
     response_schema는 Gemini의 responseSchema 형식(dict)을 그대로 전달한다.
-    실패하면 max_retries만큼 재시도하고, 그래도 실패하면 실제 원인이 담긴 예외를 던진다
-    (호출측에서 원인을 화면에 보여줄 수 있도록 원인을 뭉개지 않는다).
-    503처럼 일시적인 과부하 에러는 재시도 사이에 점점 길게(2초, 4초, 8초...) 기다렸다가
-    다시 시도한다 - 곧바로 재시도하면 여전히 붐비는 상태일 확률이 높기 때문.
+    한 조합(키+모델)에서 max_retries만큼만 짧게 재시도하고, 그래도 안 되면 바로
+    다음 모델/키 조합으로 넘어간다 (조합이 이미 여러 개이므로, 한 조합에 오래
+    매달리는 대신 조합 전환 자체를 재시도 전략으로 쓴다 - 전체 대기 시간을 줄이기 위함).
 
     GEMINI_API_KEYS에 키가 여러 개 등록되어 있으면(팀원별로 무료 키를 나눠 등록한
     경우), 현재 키가 사용량 한도를 초과했을 때 자동으로 다음 키로 넘어가서 계속
