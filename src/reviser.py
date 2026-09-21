@@ -68,15 +68,41 @@ def _build_user_content(style_guide: dict, paragraphs: list[str]) -> str:
     return json.dumps(payload, ensure_ascii=False, indent=2)
 
 
+# 문단이 많은 문서를 한 번에 요청하면 출력 JSON이 커져서 Gemini가 max_output_tokens에
+# 걸려 응답이 중간에 잘리고(JSON 파싱 실패) 만다. 문서 길이와 무관하게 항상 안전하도록
+# 일정 개수 단위로 나눠서 호출한다.
+_BATCH_SIZE = 25
+
+
 def revise_paragraphs(style_guide: dict, paragraphs: list[str]) -> tuple[list[dict], str | None]:
     """반환: (revisions, error_message)
 
     revisions는 [{index, revised_text, changed, reason, suggestion}, ...]
-    (paragraphs와 같은 길이/순서 보장). changed=true인데 reason이 비어있는 경우도
-    "일관성 없는 결과"로 간주해 재시도 대상이다 - 누가 실행해도 같은 수준(수정에는
-    반드시 근거 코멘트가 남는)의 결과가 나오도록 스키마 단계에서 강제한다.
+    (paragraphs와 같은 길이/순서 보장, 전역 index 기준). 내부적으로는 _BATCH_SIZE
+    단위로 나눠 호출하므로, 문단이 아주 많은 문서도 한 배치의 출력 크기가 커져
+    Gemini 응답이 잘리는 일 없이 처리된다. 배치 중 일부만 실패하면 해당 배치만
+    원본 그대로 반환되고, 나머지 배치의 정상 결과는 그대로 유지된다.
+    """
+    all_revisions: list[dict] = []
+    error_messages: list[str] = []
+    for start in range(0, len(paragraphs), _BATCH_SIZE):
+        batch = paragraphs[start : start + _BATCH_SIZE]
+        revisions, error_message = _revise_batch(style_guide, batch)
+        for r in revisions:
+            r["index"] += start
+        all_revisions.extend(revisions)
+        if error_message:
+            error_messages.append(error_message)
+
+    combined_error = "; ".join(error_messages) if error_messages else None
+    return all_revisions, combined_error
+
+
+def _revise_batch(style_guide: dict, paragraphs: list[str]) -> tuple[list[dict], str | None]:
+    """배치(최대 _BATCH_SIZE개 문단) 하나에 대해 Gemini를 호출하고, 실패 시 1회 재시도한다.
+
     개수/순서가 어긋나거나 호출 자체가 실패하면 1회 재시도하고, 그래도 실패하면
-    전체를 changed=False(원본 그대로)로 반환하되, error_message에 실제 실패 원인을
+    이 배치만 changed=False(원본 그대로)로 반환하되, error_message에 실제 실패 원인을
     담아 호출측(화면)에서 "그냥 고칠 게 없었다"와 구분해서 보여줄 수 있게 한다.
     """
     user_content = _build_user_content(style_guide, paragraphs)
