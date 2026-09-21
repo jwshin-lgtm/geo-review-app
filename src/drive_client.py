@@ -1,15 +1,21 @@
-"""Google Drive 읽기 전용 클라이언트 (서비스 계정 인증)."""
+"""Google Drive 클라이언트 (서비스 계정 인증).
+
+학습 상태/스타일 가이드를 드라이브에 저장하는 기능(drive_storage.py) 때문에
+읽기 전용이 아니라 읽기/쓰기 스코프를 쓴다. 이 서비스 계정은 대상 폴더에
+"편집자"로 공유되어 있어야 쓰기가 정상 동작한다.
+"""
 from __future__ import annotations
 
 import io
+import json
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload
+from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 
 from . import config
 
-SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
+SCOPES = ["https://www.googleapis.com/auth/drive"]
 
 
 def get_drive_service():
@@ -91,3 +97,36 @@ def download_docx_bytes(file_id: str, mime_type: str) -> bytes:
     while not done:
         _, done = downloader.next_chunk()
     return buffer.getvalue()
+
+
+def download_file_bytes(file_id: str) -> bytes:
+    """구글 문서가 아닌 일반 파일(JSON 등)을 그대로 바이트로 받는다."""
+    service = get_drive_service()
+    request = service.files().get_media(fileId=file_id)
+    buffer = io.BytesIO()
+    downloader = MediaIoBaseDownload(buffer, request)
+    done = False
+    while not done:
+        _, done = downloader.next_chunk()
+    return buffer.getvalue()
+
+
+def find_file_by_name(folder_id: str, name: str) -> dict | None:
+    service = get_drive_service()
+    safe_name = name.replace("'", "\\'")
+    query = f"'{folder_id}' in parents and name = '{safe_name}' and trashed = false"
+    response = service.files().list(q=query, fields="files(id, name)").execute()
+    files = response.get("files", [])
+    return files[0] if files else None
+
+
+def upload_json(folder_id: str, name: str, data: dict) -> None:
+    """JSON 데이터를 폴더 안에 파일로 저장한다 (같은 이름 파일이 있으면 덮어쓰기)."""
+    service = get_drive_service()
+    payload = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
+    media = MediaIoBaseUpload(io.BytesIO(payload), mimetype="application/json")
+    existing = find_file_by_name(folder_id, name)
+    if existing:
+        service.files().update(fileId=existing["id"], media_body=media).execute()
+    else:
+        service.files().create(body={"name": name, "parents": [folder_id]}, media_body=media).execute()

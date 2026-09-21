@@ -5,11 +5,10 @@ from __future__ import annotations
 
 import datetime
 import json
-import os
 
-from . import gemini_client
+from . import drive_storage, gemini_client
 
-FEEDBACK_LOG_PATH = "data/feedback_log.json"
+FEEDBACK_LOG_FILE = "_app_data_feedback_log.json"
 
 CANDIDATE_SCHEMA = {
     "type": "object",
@@ -48,19 +47,14 @@ SYSTEM_INSTRUCTION = """당신은 GEO 블로그 원고 팀의 편집장입니다
   rationale(왜 이 피드백에서 이 규칙을 뽑았는지 한 문장)을 포함한다."""
 
 
-def load_feedback_log(path: str = FEEDBACK_LOG_PATH) -> list[dict]:
-    if not os.path.exists(path):
-        return []
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+def load_feedback_log() -> list[dict]:
+    return drive_storage.load_json(FEEDBACK_LOG_FILE, [])
 
 
-def append_feedback(text: str, path: str = FEEDBACK_LOG_PATH) -> None:
-    log = load_feedback_log(path)
+def append_feedback(text: str) -> None:
+    log = load_feedback_log()
     log.append({"timestamp": datetime.datetime.now().isoformat(timespec="seconds"), "text": text})
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(log, f, ensure_ascii=False, indent=2)
+    drive_storage.save_json(FEEDBACK_LOG_FILE, log)
 
 
 def analyze_feedback(feedback_text: str, style_guide: dict) -> list[dict]:

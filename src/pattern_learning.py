@@ -7,15 +7,15 @@ data/learning_state.json에 기록해두고, 다음에 실행할 때는 '새로 
 from __future__ import annotations
 
 import json
-import os
 import re
 
-from . import config, diff_utils, drive_client, gemini_client
+from . import config, diff_utils, drive_client, drive_storage, gemini_client
 from .diff_utils import EditExample, align_paragraphs
 from .docx_text import extract_paragraphs
 
 MAX_EXAMPLES_FOR_PROMPT = 80
-LEARNING_STATE_PATH = "data/learning_state.json"
+STYLE_GUIDE_CACHE_FILE = "_app_data_style_guide_cache.json"
+LEARNING_STATE_FILE = "_app_data_learning_state.json"
 
 STYLE_GUIDE_SCHEMA = {
     "type": "object",
@@ -122,31 +122,23 @@ def ensure_seed_rules(style_guide: dict) -> dict:
     return {"rules": rules}
 
 
-def load_cached_style_guide(path: str = config.STYLE_GUIDE_CACHE_PATH) -> dict:
-    if not os.path.exists(path):
-        return ensure_seed_rules({"rules": []})
-    with open(path, "r", encoding="utf-8") as f:
-        style_guide = json.load(f)
+def load_cached_style_guide() -> dict:
+    style_guide = drive_storage.load_json(STYLE_GUIDE_CACHE_FILE, {"rules": []})
     return ensure_seed_rules(style_guide)
 
 
-def save_style_guide_cache(style_guide: dict, path: str = config.STYLE_GUIDE_CACHE_PATH) -> None:
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(style_guide, f, ensure_ascii=False, indent=2)
+def save_style_guide_cache(style_guide: dict) -> None:
+    drive_storage.save_json(STYLE_GUIDE_CACHE_FILE, style_guide)
 
 
-def load_learning_state(path: str = LEARNING_STATE_PATH) -> dict:
-    if not os.path.exists(path):
-        return {"processed_pairs": [], "examples": [], "learned_months": []}
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+def load_learning_state() -> dict:
+    return drive_storage.load_json(
+        LEARNING_STATE_FILE, {"processed_pairs": [], "examples": [], "learned_months": []}
+    )
 
 
-def save_learning_state(state: dict, path: str = LEARNING_STATE_PATH) -> None:
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(state, f, ensure_ascii=False, indent=2)
+def save_learning_state(state: dict) -> None:
+    drive_storage.save_json(LEARNING_STATE_FILE, state)
 
 
 def _pair_signature(draft_file: dict, final_file: dict) -> str:
