@@ -34,6 +34,21 @@ def _get(key: str, default: str | None = None) -> str | None:
 
 
 GEMINI_API_KEY = _get("GEMINI_API_KEY")
+
+# 팀원별로 무료 API 키를 여러 개 등록해두면, 한 키가 하루 사용량 한도를 넘겼을 때
+# 자동으로 다음 키로 넘어가서 계속 쓸 수 있다. 쉼표/줄바꿈으로 구분해서 넣으면 된다
+# (예: "키1, 키2, 키3"). 비워두면 GEMINI_API_KEY 하나만 쓴다.
+_gemini_api_keys_raw = _get("GEMINI_API_KEYS")
+if _gemini_api_keys_raw:
+    GEMINI_API_KEYS = [
+        key.strip()
+        for key in _gemini_api_keys_raw.replace("\n", ",").split(",")
+        if key.strip()
+    ]
+elif GEMINI_API_KEY:
+    GEMINI_API_KEYS = [GEMINI_API_KEY]
+else:
+    GEMINI_API_KEYS = []
 DRIVE_FOLDER_ID = _get("DRIVE_FOLDER_ID", "1Xzb7MLEyM0TFwbuKKr0YiGyhpRCz13bc")
 
 # 서비스 계정 정보 (dict). 아래 중 먼저 발견되는 방식으로 읽는다.
