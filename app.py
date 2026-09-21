@@ -29,6 +29,22 @@ st.set_page_config(page_title="GEO원고, 알아서 다듬어드려요", page_ic
 theme.inject()
 
 
+def _save_style_guide_safely(style_guide: dict) -> bool:
+    """스타일 가이드를 드라이브에 저장한다. 실패해도 화면 세션에는 그대로 남지만,
+    드라이브 저장이 안 되면 새로고침/재배포 시 이번 수정이 사라지므로 반드시
+    화면에 명확히 알려야 한다 (수기로 추가한 규칙이 조용히 사라지는 것을 방지)."""
+    try:
+        pattern_learning.save_style_guide_cache(style_guide)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        st.error(
+            f"규칙을 구글 드라이브에 저장하지 못했어요: {exc}\n\n"
+            "이 화면에는 반영됐지만, 드라이브에 저장이 안 되면 나중에 사라질 수 있어요. "
+            "서비스 계정이 드라이브 폴더에 '편집자'로 공유되어 있는지 확인해주세요."
+        )
+        return False
+
+
 def _check_password() -> bool:
     """APP_PASSWORD 시크릿이 설정되어 있으면, 맞는 비밀번호를 입력해야 앱을 쓸 수 있게 한다."""
     if not config.APP_PASSWORD:
@@ -240,7 +256,10 @@ with tab_style_guide:
             if not feedback_text.strip():
                 st.warning("피드백 내용을 먼저 적어주세요.")
             else:
-                feedback.append_feedback(feedback_text.strip())
+                try:
+                    feedback.append_feedback(feedback_text.strip())
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"피드백 기록을 드라이브에 저장하지 못했어요: {exc}")
                 with st.spinner("피드백 맥락을 분석하는 중이에요..."):
                     try:
                         candidates = feedback.analyze_feedback(feedback_text.strip(), st.session_state.style_guide)
@@ -273,7 +292,12 @@ with tab_style_guide:
                 combined_text = "\n\n".join(
                     f"[원문] {c['anchored_text']}\n[코멘트] {c['comment']}" for c in doc_comments
                 )
-                feedback.append_feedback(f"(업로드 문서 코멘트 {len(doc_comments)}건 - {uploaded_file.name})\n{combined_text}")
+                try:
+                    feedback.append_feedback(
+                        f"(업로드 문서 코멘트 {len(doc_comments)}건 - {uploaded_file.name})\n{combined_text}"
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"피드백 기록을 드라이브에 저장하지 못했어요: {exc}")
                 with st.spinner(f"코멘트 {len(doc_comments)}건을 분석하는 중이에요..."):
                     try:
                         candidates = feedback.analyze_feedback(combined_text, st.session_state.style_guide)
@@ -313,9 +337,9 @@ with tab_style_guide:
                         }
                     )
                 st.session_state.style_guide = {"rules": updated_rules}
-                pattern_learning.save_style_guide_cache(st.session_state.style_guide)
+                if _save_style_guide_safely(st.session_state.style_guide):
+                    st.success(f"{len(selected_candidates)}개 규칙을 추가했어요.")
                 st.session_state.feedback_candidates = None
-                st.success(f"{len(selected_candidates)}개 규칙을 추가했어요.")
                 st.rerun()
 
     st.write("")
@@ -350,8 +374,8 @@ with tab_style_guide:
                             }
                         )
                         st.session_state.style_guide = {"rules": rules}
-                        pattern_learning.save_style_guide_cache(st.session_state.style_guide)
-                        st.success("규칙을 추가했어요.")
+                        if _save_style_guide_safely(st.session_state.style_guide):
+                            st.success("규칙을 추가했어요.")
                         st.rerun()
 
     st.write("")
@@ -412,8 +436,8 @@ with tab_style_guide:
                                 if (row.get("rule") or "").strip():
                                     new_rules.append({"category": category, **row})
                         st.session_state.style_guide = {"rules": new_rules}
-                        pattern_learning.save_style_guide_cache(st.session_state.style_guide)
-                        st.success("저장했어요.")
+                        if _save_style_guide_safely(st.session_state.style_guide):
+                            st.success("저장했어요.")
 
 
 # ══════════════════════════════════════════════════════════════════════
