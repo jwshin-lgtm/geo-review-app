@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
 
 from google import genai
@@ -12,7 +13,9 @@ from . import config
 _clients_by_key_index: dict[int, genai.Client] = {}
 # 여러 API 키를 등록했을 때, 마지막으로 성공했던(또는 아직 한도가 안 찬) 키부터
 # 시작하도록 기억해둔다 - 매번 이미 소진된 첫 번째 키부터 다시 시도하며 시간을 버리지 않기 위함.
+# 배치를 병렬로 처리하면서 여러 스레드가 동시에 건드릴 수 있으므로 락으로 보호한다.
 _current_key_index = 0
+_key_index_lock = threading.Lock()
 
 # 일시적 과부하 에러 - 몇 초 기다렸다가 다시 시도하면 대부분 해결됨
 _TRANSIENT_MARKERS = ("503", "UNAVAILABLE", "overloaded")
@@ -148,9 +151,12 @@ def generate_json(
         max_output_tokens=max_output_tokens,
     )
 
+    with _key_index_lock:
+        start_index = _current_key_index
+
     last_error: Exception | None = None
     for offset in range(len(keys)):
-        key_index = (_current_key_index + offset) % len(keys)
+        key_index = (start_index + offset) % len(keys)
         client = _get_client_by_index(key_index)
         quota_exceeded_for_key = False
         for model in models:
@@ -163,7 +169,8 @@ def generate_json(
             except Exception as exc:  # noqa: BLE001 - GeminiModelNotFoundError 및 그 외 실패 모두 다음 모델로
                 last_error = exc
                 continue
-            _current_key_index = key_index
+            with _key_index_lock:
+                _current_key_index = key_index
             return result
         if quota_exceeded_for_key:
             continue

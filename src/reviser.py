@@ -2,9 +2,15 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 
 from . import gemini_client
 from .gemini_client import GeminiQuotaExceededError
+
+# 배치를 순서대로 하나씩 처리하면 문단이 많은 문서는 배치 수만큼 대기 시간이
+# 그대로 쌓인다. Gemini 호출은 대부분 네트워크 대기 시간이라 동시에 여러 개를
+# 보내도 문제없으므로, 배치들을 병렬로 처리해서 전체 소요 시간을 줄인다.
+_MAX_PARALLEL_BATCHES = 4
 
 REVISION_SCHEMA = {
     "type": "object",
@@ -84,27 +90,39 @@ def revise_paragraphs(style_guide: dict, paragraphs: list[str]) -> tuple[list[di
     Gemini 응답이 잘리는 일 없이 처리된다. 배치 중 일부만 실패하면 해당 배치만
     원본 그대로 반환되고, 나머지 배치의 정상 결과는 그대로 유지된다.
     """
-    all_revisions: list[dict] = []
-    error_messages: list[str] = []
-    for start in range(0, len(paragraphs), _BATCH_SIZE):
-        batch = paragraphs[start : start + _BATCH_SIZE]
+    batch_starts = list(range(0, len(paragraphs), _BATCH_SIZE))
+    batches = [paragraphs[start : start + _BATCH_SIZE] for start in batch_starts]
+
+    def _run_batch(start: int, batch: list[str]) -> tuple[int, list[dict], str | None]:
         try:
             revisions, error_message = _revise_batch(style_guide, batch)
         except GeminiQuotaExceededError as exc:
-            # 한도 초과는 재시도해도 남은 배치도 전부 같은 이유로 실패한다.
-            # 남은 문단은 요청조차 보내지 않고(=한도를 더 깎지 않고) 원본 그대로 채운다.
-            for i, text in enumerate(paragraphs[start:]):
-                all_revisions.append(
-                    {"index": start + i, "revised_text": text, "changed": False, "reason": "", "suggestion": ""}
-                )
-            error_messages.append(str(exc))
-            break
+            # 한도 초과는 재시도해도 소용없다 - 이 배치 문단은 원본 그대로 채운다.
+            revisions = [
+                {"index": i, "revised_text": text, "changed": False, "reason": "", "suggestion": ""}
+                for i, text in enumerate(batch)
+            ]
+            error_message = str(exc)
+        return start, revisions, error_message
+
+    results: dict[int, tuple[list[dict], str | None]] = {}
+    with ThreadPoolExecutor(max_workers=min(_MAX_PARALLEL_BATCHES, len(batches) or 1)) as executor:
+        futures = [executor.submit(_run_batch, start, batch) for start, batch in zip(batch_starts, batches)]
+        for future in futures:
+            start, revisions, error_message = future.result()
+            results[start] = (revisions, error_message)
+
+    all_revisions: list[dict] = []
+    error_messages: list[str] = []
+    for start in batch_starts:
+        revisions, error_message = results[start]
         for r in revisions:
             r["index"] += start
         all_revisions.extend(revisions)
         if error_message:
             error_messages.append(error_message)
 
+    all_revisions.sort(key=lambda r: r["index"])
     combined_error = "; ".join(error_messages) if error_messages else None
     return all_revisions, combined_error
 

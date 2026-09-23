@@ -8,6 +8,7 @@
 import io
 import zipfile
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import streamlit as st
 
@@ -170,34 +171,55 @@ with tab_manuscripts:
                     elif not selected_targets:
                         st.warning("고칠 파일을 하나 이상 골라주세요.")
                     else:
-                        results = []
-                        progress = st.progress(0.0)
-                        for i, target_file in enumerate(selected_targets):
-                            with st.spinner(f"'{target_file['name']}' 읽고 고치는 중이에요..."):
-                                target_bytes = drive_client.download_docx_bytes(
-                                    target_file["id"], target_file["mimeType"]
-                                )
-                                paragraphs = docx_text.extract_paragraphs(target_bytes)
-                                revisions, revise_error = reviser.revise_paragraphs(
-                                    st.session_state.style_guide, paragraphs
-                                )
-                                result_bytes, changed_any, comment_count = highlighter.build_highlighted_docx(
-                                    target_bytes, revisions
-                                )
-                            if revise_error:
-                                st.error(f"'{target_file['name']}'을 고치다가 문제가 생겼어요: {revise_error}")
-                            changed_count = sum(1 for r in revisions if r["changed"])
-                            results.append(
-                                {
-                                    "name": target_file["name"],
-                                    "bytes": result_bytes,
-                                    "total": len(paragraphs),
-                                    "changed": changed_count,
-                                    "comments": comment_count,
-                                    "error": revise_error,
-                                }
+                        def _process_file(target_file: dict) -> dict:
+                            target_bytes = drive_client.download_docx_bytes(
+                                target_file["id"], target_file["mimeType"]
                             )
-                            progress.progress((i + 1) / len(selected_targets))
+                            paragraphs = docx_text.extract_paragraphs(target_bytes)
+                            revisions, revise_error = reviser.revise_paragraphs(
+                                st.session_state.style_guide, paragraphs
+                            )
+                            result_bytes, changed_any, comment_count = highlighter.build_highlighted_docx(
+                                target_bytes, revisions
+                            )
+                            changed_count = sum(1 for r in revisions if r["changed"])
+                            return {
+                                "name": target_file["name"],
+                                "bytes": result_bytes,
+                                "total": len(paragraphs),
+                                "changed": changed_count,
+                                "comments": comment_count,
+                                "error": revise_error,
+                            }
+
+                        progress = st.progress(0.0)
+                        results_by_name = {}
+                        with st.spinner(f"원고 {len(selected_targets)}건을 동시에 읽고 고치는 중이에요..."):
+                            # 파일마다 순서대로 처리하면 파일 수만큼 대기 시간이 그대로 쌓이므로,
+                            # 여러 파일을 동시에 처리해서 전체 소요 시간을 줄인다.
+                            with ThreadPoolExecutor(max_workers=min(4, len(selected_targets))) as executor:
+                                futures = {
+                                    executor.submit(_process_file, target_file): target_file
+                                    for target_file in selected_targets
+                                }
+                                done_count = 0
+                                for future in as_completed(futures):
+                                    target_file = futures[future]
+                                    try:
+                                        results_by_name[target_file["name"]] = future.result()
+                                    except Exception as exc:  # noqa: BLE001
+                                        st.error(f"'{target_file['name']}'을 고치다가 문제가 생겼어요: {exc}")
+                                    done_count += 1
+                                    progress.progress(done_count / len(selected_targets))
+
+                        results = [
+                            results_by_name[target_file["name"]]
+                            for target_file in selected_targets
+                            if target_file["name"] in results_by_name
+                        ]
+                        for r in results:
+                            if r["error"]:
+                                st.error(f"'{r['name']}'을 고치다가 문제가 생겼어요: {r['error']}")
                         st.session_state.batch_results = results
                         st.success(f"{len(results)}건, 다 고쳤어요.")
 
