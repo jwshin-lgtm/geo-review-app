@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import threading
 import time
 
@@ -17,13 +18,25 @@ _clients_by_key_index: dict[int, genai.Client] = {}
 _current_key_index = 0
 _key_index_lock = threading.Lock()
 
+# 병렬 처리(여러 원고/여러 배치 동시 처리)로 한꺼번에 너무 많은 요청을 쏘면
+# gemini-3.6-flash 같은 분당 요청 수가 아주 낮은(5건) 모델에서 바로 걸린다.
+# 동시에 나가는 Gemini 호출 자체를 적당히 제한해서 애초에 한도에 덜 걸리게 한다.
+_CONCURRENT_CALL_LIMIT = 3
+_concurrency_semaphore = threading.Semaphore(_CONCURRENT_CALL_LIMIT)
+
 # 일시적 과부하 에러 - 몇 초 기다렸다가 다시 시도하면 대부분 해결됨
 _TRANSIENT_MARKERS = ("503", "UNAVAILABLE", "overloaded")
 
-# 사용량 한도(429/RESOURCE_EXHAUSTED) 초과는 "일시적"이 아니라 그 날의 요청 가능
-# 횟수를 이미 다 쓴 것이므로, 재시도해봤자 같은 실패가 반복되며 남은 한도만 더 깎아먹는다.
-# 즉시 포기하고 위로 명확히 알려야 한다.
+# 429/RESOURCE_EXHAUSTED에는 두 가지 전혀 다른 상황이 섞여 있다.
+# - "PerDay" 한도: 그 날의 요청 가능 횟수를 이미 다 쓴 것 -> 재시도해도 절대 안 풀린다.
+#   즉시 포기하고 다음 '키'로 넘어가야 한다.
+# - "PerMinute" 한도: 1분짜리 짧은 속도 제한일 뿐이라, 서버가 알려주는 시간만큼
+#   잠깐 기다리면 같은 키/모델로도 금방 다시 된다. 이걸 일일 한도와 똑같이 취급해서
+#   즉시 포기하면, 동시에 여러 요청을 보낼 때(병렬 처리) 오히려 더 쉽게 실패한다.
+_DAILY_QUOTA_MARKERS = ("PerDay",)
+_RATE_LIMIT_MARKERS = ("PerMinute",)
 _QUOTA_MARKERS = ("429", "RESOURCE_EXHAUSTED", "quota")
+_RATE_LIMIT_MAX_RETRIES = 3
 
 # 모델 자체가 이 키/프로젝트에서 지원 종료(404)된 경우 - 재시도해도 절대 안 되므로
 # 즉시 다음 모델로 넘어간다.
@@ -38,6 +51,24 @@ def _is_transient_error(exc: Exception) -> bool:
 def _is_quota_error(exc: Exception) -> bool:
     message = str(exc)
     return any(marker in message for marker in _QUOTA_MARKERS)
+
+
+def _is_daily_quota_error(exc: Exception) -> bool:
+    message = str(exc)
+    return any(marker in message for marker in _DAILY_QUOTA_MARKERS)
+
+
+def _is_rate_limit_error(exc: Exception) -> bool:
+    message = str(exc)
+    return any(marker in message for marker in _RATE_LIMIT_MARKERS)
+
+
+def _parse_retry_delay_seconds(exc: Exception, default: float = 10.0, cap: float = 30.0) -> float:
+    """에러 메시지에 담긴 'retryDelay': '5s' 같은 값을 읽어 몇 초 기다려야 하는지 구한다."""
+    match = re.search(r"retryDelay['\"]?\s*:\s*['\"]?(\d+(?:\.\d+)?)", str(exc))
+    if not match:
+        return default
+    return min(float(match.group(1)), cap)
 
 
 def _is_not_found_error(exc: Exception) -> bool:
@@ -68,24 +99,36 @@ def _call_once(
 ):
     """키 하나 + 모델 하나 조합으로 호출하고, 일시적 에러(503 등)만 재시도한다.
 
-    한도 초과(429/RESOURCE_EXHAUSTED)는 이 키로는 더 재시도해도 소용없으므로
-    즉시 GeminiQuotaExceededError를 던져 호출측이 다음 키로 넘어가게 한다.
+    하루 한도(PerDay) 초과는 이 키로는 더 재시도해도 소용없으므로 즉시
+    GeminiQuotaExceededError를 던져 호출측이 다음 키로 넘어가게 한다.
+    분당 한도(PerMinute) 초과는 몇 초~수십 초만 기다리면 풀리므로, 서버가 알려준
+    시간만큼 기다렸다가 같은 키/모델로 다시 시도한다 (병렬로 여러 요청을 보내면
+    이 분당 한도에 가장 먼저 걸리기 쉽다).
     모델 지원 종료(404/NOT_FOUND)는 이 모델로는 절대 안 되므로 즉시
     GeminiModelNotFoundError를 던져 호출측이 다음 모델로 넘어가게 한다.
     """
     last_error: Exception | None = None
-    for attempt in range(max_retries + 1):
+    rate_limit_retries_left = _RATE_LIMIT_MAX_RETRIES
+    attempt = 0
+    while True:
         try:
-            response = client.models.generate_content(
-                model=model,
-                contents=user_content,
-                config=generation_config,
-            )
+            with _concurrency_semaphore:
+                response = client.models.generate_content(
+                    model=model,
+                    contents=user_content,
+                    config=generation_config,
+                )
         except Exception as exc:  # noqa: BLE001 - API 호출 자체의 실패 원인을 그대로 보존
-            if _is_quota_error(exc):
+            if _is_quota_error(exc) and _is_daily_quota_error(exc):
                 raise GeminiQuotaExceededError(
                     f"Gemini API 사용량 한도를 초과했습니다: {exc}"
                 ) from exc
+            if _is_quota_error(exc) and _is_rate_limit_error(exc) and rate_limit_retries_left > 0:
+                # 분당 한도는 배치 전환용 attempt 예산을 쓰지 않고 별도로 재시도한다.
+                rate_limit_retries_left -= 1
+                last_error = exc
+                time.sleep(_parse_retry_delay_seconds(exc))
+                continue
             if _is_not_found_error(exc):
                 raise GeminiModelNotFoundError(
                     f"모델 '{model}'을(를) 이 키에서 지원하지 않습니다: {exc}"
@@ -93,6 +136,9 @@ def _call_once(
             last_error = exc
             if _is_transient_error(exc) and attempt < max_retries:
                 time.sleep(2)  # 조합(키x모델)이 여러 개 있으므로, 한 조합에서 길게 기다리지 않고 짧게만 쉬었다 넘어간다
+            if attempt >= max_retries:
+                break
+            attempt += 1
             continue
 
         finish_reason = None
@@ -104,6 +150,9 @@ def _call_once(
                 f"Gemini가 빈 응답을 반환했습니다 (finish_reason={finish_reason}). "
                 "문서가 너무 길어 출력이 잘렸을 수 있습니다."
             )
+            if attempt >= max_retries:
+                break
+            attempt += 1
             continue
 
         try:
@@ -112,6 +161,9 @@ def _call_once(
             last_error = RuntimeError(
                 f"Gemini 응답을 JSON으로 파싱하지 못했습니다 (finish_reason={finish_reason}): {exc}"
             )
+            if attempt >= max_retries:
+                break
+            attempt += 1
             continue
 
     raise RuntimeError(f"Gemini 호출 실패: {last_error}")
