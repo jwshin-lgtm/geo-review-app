@@ -18,6 +18,7 @@ from src import (
     docx_text,
     drive_client,
     feedback,
+    gemini_client,
     highlighter,
     pattern_learning,
     reviser,
@@ -90,6 +91,23 @@ tab_manuscripts, tab_style_guide, tab_compliance = st.tabs(["원고 리스트", 
 # 탭 1: 원고 리스트 (학습 현황 + 일괄 자동 수정 + 다운로드)
 # ══════════════════════════════════════════════════════════════════════
 with tab_manuscripts:
+    with st.container(border=True):
+        st.header("API 사용 현황")
+        st.caption(
+            "Gemini는 '남은 할당량'을 알려주는 기능이 없어서, 이 앱이 직접 보낸 호출 수를 세어 보여드려요. "
+            "앱이 재시작되면 0부터 다시 세니, 정확한 실시간 잔여량이 아니라 참고용 수치예요."
+        )
+        _usage_rows = gemini_client.get_usage_summary()
+        if not _usage_rows:
+            st.caption("아직 이번 세션에서 Gemini를 호출한 기록이 없어요.")
+        else:
+            for row in _usage_rows:
+                st.write(
+                    f"키 {row['key_index'] + 1}번 · `{row['model']}` — "
+                    f"최근 1분 **{row['last_minute']}건**, 최근 24시간 **{row['last_day']}건**"
+                )
+            st.caption("무료 티어 기준 보통 모델당 분당 5건, 하루 20건 안팎이에요 (키/모델마다 다를 수 있어요).")
+
     with st.container(border=True):
         st.header("원고 학습 현황")
         st.caption("드라이브를 쭉 살펴보고, 아직 안 배운 수정 이력만 콕 집어서 학습해요.")

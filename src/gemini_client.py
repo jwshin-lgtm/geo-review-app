@@ -45,6 +45,42 @@ _RATE_LIMIT_MAX_RETRIES = 1
 # 즉시 다음 모델로 넘어간다.
 _NOT_FOUND_MARKERS = ("404", "NOT_FOUND")
 
+# Google이 "남은 할당량"을 알려주는 API를 따로 제공하지 않으므로, 우리가 직접
+# 실제로 보낸 호출을 시간과 함께 기록해서 화면에 "최근 1분/24시간 호출 수"로
+# 보여준다. 실패한 호출도 할당량을 깎으므로 성공 여부와 무관하게 기록한다.
+# 앱이 재시작되면 초기화되는 참고용 수치다 (정확한 실시간 잔여량은 아니다).
+_call_log: list[tuple[float, int, str]] = []
+_call_log_lock = threading.Lock()
+
+
+def _record_call(key_index: int, model: str) -> None:
+    now = time.time()
+    with _call_log_lock:
+        _call_log.append((now, key_index, model))
+        cutoff = now - 24 * 3600
+        while _call_log and _call_log[0][0] < cutoff:
+            _call_log.pop(0)
+
+
+def get_usage_summary() -> list[dict]:
+    """최근 1분/24시간 동안 (키, 모델) 조합별로 실제 호출을 몇 번 보냈는지 반환한다."""
+    now = time.time()
+    with _call_log_lock:
+        entries = list(_call_log)
+
+    summary: dict[tuple[int, str], dict] = {}
+    for ts, key_index, model in entries:
+        key = (key_index, model)
+        row = summary.setdefault(
+            key, {"key_index": key_index, "model": model, "last_minute": 0, "last_day": 0}
+        )
+        if now - ts <= 60:
+            row["last_minute"] += 1
+        if now - ts <= 24 * 3600:
+            row["last_day"] += 1
+
+    return sorted(summary.values(), key=lambda r: (r["key_index"], r["model"]))
+
 
 def _is_transient_error(exc: Exception) -> bool:
     message = str(exc)
@@ -95,6 +131,7 @@ def _get_client_by_index(index: int) -> genai.Client:
 
 def _call_once(
     client: genai.Client,
+    key_index: int,
     model: str,
     generation_config: types.GenerateContentConfig,
     user_content: str,
@@ -116,6 +153,7 @@ def _call_once(
     while True:
         try:
             with _concurrency_semaphore:
+                _record_call(key_index, model)
                 response = client.models.generate_content(
                     model=model,
                     contents=user_content,
@@ -216,7 +254,7 @@ def generate_json(
         quota_exceeded_for_key = False
         for model in models:
             try:
-                result = _call_once(client, model, generation_config, user_content, max_retries)
+                result = _call_once(client, key_index, model, generation_config, user_content, max_retries)
             except GeminiQuotaExceededError as exc:
                 last_error = exc
                 quota_exceeded_for_key = True
