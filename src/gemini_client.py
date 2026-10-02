@@ -36,7 +36,10 @@ _TRANSIENT_MARKERS = ("503", "UNAVAILABLE", "overloaded")
 _DAILY_QUOTA_MARKERS = ("PerDay",)
 _RATE_LIMIT_MARKERS = ("PerMinute",)
 _QUOTA_MARKERS = ("429", "RESOURCE_EXHAUSTED", "quota")
-_RATE_LIMIT_MAX_RETRIES = 3
+# 분당 한도에 걸릴 때마다 같은 조합으로 여러 번 재시도하면, 그 자체로 실제 API 호출
+# 횟수를 몇 배로 불려서 한도를 더 빨리 소진시킨다. 1번만 기다렸다 재시도하고, 그래도
+# 안 되면 바로 다음 모델/키 조합으로 넘어가는 게 전체 호출 수를 훨씬 줄인다.
+_RATE_LIMIT_MAX_RETRIES = 1
 
 # 모델 자체가 이 키/프로젝트에서 지원 종료(404)된 경우 - 재시도해도 절대 안 되므로
 # 즉시 다음 모델로 넘어간다.
