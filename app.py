@@ -171,13 +171,17 @@ with tab_manuscripts:
                     elif not selected_targets:
                         st.warning("고칠 파일을 하나 이상 골라주세요.")
                     else:
+                        # st.session_state는 메인 스레드(ScriptRunContext)에서만 읽을 수 있어서,
+                        # 워커 스레드 안에서 바로 참조하면 실패한다. 미리 일반 변수로 꺼내서 넘긴다.
+                        current_style_guide = st.session_state.style_guide
+
                         def _process_file(target_file: dict) -> dict:
                             target_bytes = drive_client.download_docx_bytes(
                                 target_file["id"], target_file["mimeType"]
                             )
                             paragraphs = docx_text.extract_paragraphs(target_bytes)
                             revisions, revise_error = reviser.revise_paragraphs(
-                                st.session_state.style_guide, paragraphs
+                                current_style_guide, paragraphs
                             )
                             result_bytes, changed_any, comment_count = highlighter.build_highlighted_docx(
                                 target_bytes, revisions
